@@ -1,0 +1,362 @@
+package com.kevan.videorabykevan.ui.screens
+
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.kevan.videorabykevan.model.AspectRatioPreset
+import com.kevan.videorabykevan.model.SafeZoneType
+import com.kevan.videorabykevan.ui.components.AudioSheet
+import com.kevan.videorabykevan.ui.components.ClipActionRow
+import com.kevan.videorabykevan.ui.components.ExportDialog
+import com.kevan.videorabykevan.ui.components.FilterSheet
+import com.kevan.videorabykevan.ui.components.OpenSourceSheet
+import com.kevan.videorabykevan.ui.components.SafeZoneSheet
+import com.kevan.videorabykevan.ui.components.SpeedSheet
+import com.kevan.videorabykevan.ui.components.TextEditorSheet
+import com.kevan.videorabykevan.ui.components.TimelineView
+import com.kevan.videorabykevan.ui.components.TrimSheet
+import com.kevan.videorabykevan.ui.components.VideoPlayerView
+import com.kevan.videorabykevan.ui.theme.AccentCyan
+import com.kevan.videorabykevan.ui.theme.AccentPink
+import com.kevan.videorabykevan.ui.theme.DarkBackground
+import com.kevan.videorabykevan.ui.theme.DarkCard
+import com.kevan.videorabykevan.ui.theme.DarkSurface
+import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
+import com.kevan.videorabykevan.ui.viewmodel.EditorViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditorScreen(
+    projectId: String,
+    viewModel: EditorViewModel,
+    onNavigateBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsState()
+    val playerState by viewModel.playerState.collectAsState()
+    val exportState by viewModel.exportState.collectAsState()
+
+    var showAspectMenu by remember { mutableStateOf(false) }
+
+    // Media Picker for videos
+    val videoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.addVideoUris(uris, context)
+        }
+    }
+
+    // Audio Picker for background music
+    val audioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val title = uri.lastPathSegment?.substringAfterLast('/') ?: "Music Track"
+            viewModel.setAudioTrack(uri, title)
+        }
+    }
+
+    LaunchedEffect(projectId) {
+        viewModel.loadProject(projectId)
+    }
+
+    val selectedClip = uiState.project.clips.getOrNull(uiState.selectedClipIndex)
+    val selectedTextOverlay = uiState.project.textOverlays.find { it.id == uiState.selectedOverlayId }
+
+    Scaffold(
+        containerColor = DarkBackground,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Aspect Ratio Selector Dropdown Pill
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(DarkSurfaceVariant)
+                                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                                    .clickable { showAspectMenu = true }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = uiState.project.aspectRatio.label,
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showAspectMenu,
+                                onDismissRequest = { showAspectMenu = false },
+                                modifier = Modifier.background(DarkCard)
+                            ) {
+                                AspectRatioPreset.entries.forEach { preset ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(preset.label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text(preset.description, color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
+                                            }
+                                        },
+                                        onClick = {
+                                            viewModel.setAspectRatio(preset)
+                                            showAspectMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Safe Zone Indicator Pill
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(DarkSurfaceVariant)
+                                .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                            .clickable { viewModel.setShowSafeZoneSheet(true) }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ViewInAr, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = uiState.project.safeZone.badge,
+                                color = AccentCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
+                    }
+                },
+                actions = {
+                    // Export Button
+                    Button(
+                        onClick = { viewModel.setShowExportDialog(true) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AccentCyan
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Icon(Icons.Default.FileUpload, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Export", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // Main Center Player Viewport (9:16 target)
+            VideoPlayerView(
+                exoPlayer = viewModel.playerManager.exoPlayer,
+                aspectRatioPreset = uiState.project.aspectRatio,
+                safeZoneType = uiState.project.safeZone,
+                textOverlays = uiState.project.textOverlays,
+                currentPositionMs = playerState.currentPositionMs,
+                isPlaying = playerState.isPlaying,
+                isBuffering = playerState.isBuffering,
+                hasClips = uiState.project.clips.isNotEmpty(),
+                selectedOverlayId = uiState.selectedOverlayId,
+                onTogglePlayPause = { viewModel.playerManager.togglePlayPause() },
+                onSelectOverlay = { viewModel.selectOverlay(it) },
+                onUpdateOverlayPosition = { id, x, y -> viewModel.updateOverlayPosition(id, x, y) },
+                onAddClipClicked = {
+                    videoPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                    )
+                },
+                onGenerateDemoClipClicked = {
+                    viewModel.addDemoClip(context)
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            )
+
+            // Multi-clip Timeline & Transport Scrubbing Bar
+            TimelineView(
+                clips = uiState.project.clips,
+                currentPositionMs = playerState.currentPositionMs,
+                totalDurationMs = playerState.totalDurationMs,
+                selectedClipIndex = uiState.selectedClipIndex,
+                isPlaying = playerState.isPlaying,
+                onTogglePlayPause = { viewModel.playerManager.togglePlayPause() },
+                onStepBackward = { viewModel.playerManager.stepBy(-1000L) },
+                onStepForward = { viewModel.playerManager.stepBy(1000L) },
+                onSeekTo = { viewModel.playerManager.seekToTimeline(it) },
+                onSelectClip = { viewModel.selectClip(it) },
+                onSplitCurrentClip = { viewModel.splitClipAtCurrentPlayhead() },
+                onAddClipClicked = {
+                    videoPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                    )
+                }
+            )
+
+            // Bottom Editing Toolbar
+            ClipActionRow(
+                hasSelectedClip = selectedClip != null,
+                isClipMuted = selectedClip?.isMuted ?: false,
+                onOpenTrim = { viewModel.setShowTrimSheet(true) },
+                onOpenSpeed = { viewModel.setShowSpeedSheet(true) },
+                onOpenFilters = { viewModel.setShowFilterSheet(true) },
+                onOpenText = { viewModel.setShowTextEditorSheet(true) },
+                onOpenAudio = { viewModel.setShowAudioSheet(true) },
+                onOpenSafeZones = { viewModel.setShowSafeZoneSheet(true) },
+                onToggleMute = { viewModel.toggleSelectedClipMute() },
+                onDuplicateClip = { viewModel.duplicateSelectedClip() },
+                onDeleteClip = { viewModel.deleteSelectedClip() }
+            )
+        }
+
+        // Bottom Sheets & Dialogs
+        if (uiState.showTrimSheet && selectedClip != null) {
+            TrimSheet(
+                clip = selectedClip,
+                onDismiss = { viewModel.setShowTrimSheet(false) },
+                onSaveTrim = { start, end -> viewModel.trimSelectedClip(start, end) }
+            )
+        }
+
+        if (uiState.showSpeedSheet && selectedClip != null) {
+            SpeedSheet(
+                clip = selectedClip,
+                onDismiss = { viewModel.setShowSpeedSheet(false) },
+                onSelectSpeed = { viewModel.setSelectedClipSpeed(it) }
+            )
+        }
+
+        if (uiState.showFilterSheet && selectedClip != null) {
+            FilterSheet(
+                currentFilter = selectedClip.filter,
+                onDismiss = { viewModel.setShowFilterSheet(false) },
+                onSelectFilter = { viewModel.setSelectedClipFilter(it) }
+            )
+        }
+
+        if (uiState.showTextEditorSheet) {
+            TextEditorSheet(
+                existingOverlay = selectedTextOverlay,
+                totalDurationMs = playerState.totalDurationMs,
+                onDismiss = { viewModel.setShowTextEditorSheet(false) },
+                onSaveOverlay = { viewModel.addOrUpdateTextOverlay(it) },
+                onDeleteOverlay = { viewModel.deleteTextOverlay(it) }
+            )
+        }
+
+        if (uiState.showAudioSheet) {
+            AudioSheet(
+                activeAudioTrack = uiState.project.audioTracks.firstOrNull(),
+                allClipsMuted = uiState.project.clips.isNotEmpty() && uiState.project.clips.all { it.isMuted },
+                onDismiss = { viewModel.setShowAudioSheet(false) },
+                onPickAudioFile = { audioPickerLauncher.launch("audio/*") },
+                onUpdateAudioVolume = { viewModel.updateAudioVolume(it) },
+                onToggleMuteOriginalAudio = { viewModel.toggleMuteAllClips() },
+                onRemoveAudioTrack = { viewModel.removeAudioTrack() }
+            )
+        }
+
+        if (uiState.showSafeZoneSheet) {
+            SafeZoneSheet(
+                currentSafeZone = uiState.project.safeZone,
+                onDismiss = { viewModel.setShowSafeZoneSheet(false) },
+                onSelectSafeZone = { viewModel.setSafeZone(it) }
+            )
+        }
+
+        if (uiState.showExportDialog) {
+            ExportDialog(
+                exportState = exportState,
+                onStartExport = { preset -> viewModel.startExport(preset) },
+                onCancelExport = { viewModel.cancelExport() },
+                onDismiss = {
+                    viewModel.setShowExportDialog(false)
+                    viewModel.resetExportState()
+                }
+            )
+        }
+
+        if (uiState.showOpenSourceSheet) {
+            OpenSourceSheet(onDismiss = { viewModel.setShowOpenSourceSheet(false) })
+        }
+    }
+}
