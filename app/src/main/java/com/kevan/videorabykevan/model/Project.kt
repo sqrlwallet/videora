@@ -26,6 +26,6 @@ data class Project(
             val minutes = totalSec / 60
             val seconds = totalSec % 60
             val millis = (totalDurationMs % 1000) / 100
-            return String.format("%02d:%02d.%d", minutes, seconds, millis)
+            return String.format(java.util.Locale.US, "%02d:%02d.%d", minutes, seconds, millis)
         }
 }

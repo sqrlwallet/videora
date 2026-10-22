@@ -164,12 +164,12 @@ fun TextEditorSheet(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Display: ${String.format("%.1fs", startSec)} to ${String.format("%.1fs", endSec)}",
+                    text = "Display: ${String.format(java.util.Locale.US, "%.1fs", startSec)} to ${String.format(java.util.Locale.US, "%.1fs", endSec)}",
                     color = Color.White.copy(alpha = 0.8f),
                     fontSize = 12.sp
                 )
                 Text(
-                    text = "Duration: ${String.format("%.1fs", (endSec - startSec).coerceAtLeast(0f))}",
+                    text = "Duration: ${String.format(java.util.Locale.US, "%.1fs", (endSec - startSec).coerceAtLeast(0f))}",
                     color = AccentCyan,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold

@@ -164,5 +164,5 @@ private fun formatMillis(ms: Long): String {
     val min = totalSec / 60
     val sec = totalSec % 60
     val tenth = (ms % 1000) / 100
-    return String.format("%02d:%02d.%d", min, sec, tenth)
+    return String.format(java.util.Locale.US, "%02d:%02d.%d", min, sec, tenth)
 }

@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kevan.videorabykevan.ui.screens.EditorScreen
 import com.kevan.videorabykevan.ui.screens.HomeScreen
@@ -31,6 +32,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        try {
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = false
+                isAppearanceLightNavigationBars = false
+            }
+        } catch (_: Exception) {}
+
         setContent {
             VideoraByKevanTheme {
                 Surface(
@@ -48,7 +56,6 @@ class MainActivity : ComponentActivity() {
 fun VideoraApp() {
     var activeProjectId by remember { mutableStateOf<String?>(null) }
     val homeViewModel: HomeViewModel = viewModel()
-    val editorViewModel: EditorViewModel = viewModel()
 
     AnimatedContent(
         targetState = activeProjectId,
@@ -77,6 +84,9 @@ fun VideoraApp() {
                 activeProjectId = null
                 homeViewModel.loadProjects()
             }
+
+            // Scoped specifically to this active project
+            val editorViewModel: EditorViewModel = viewModel(key = projectId)
 
             EditorScreen(
                 projectId = projectId,

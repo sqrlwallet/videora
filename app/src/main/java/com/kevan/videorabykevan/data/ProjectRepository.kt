@@ -30,9 +30,11 @@ class ProjectRepository(private val context: Context) {
             val type = object : TypeToken<List<Project>>() {}.type
             val list: List<Project>? = gson.fromJson(json, type)
             list?.sortedByDescending { it.updatedAt } ?: emptyList()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            val defaults = listOf(createWelcomeSampleProject())
+            saveProjectsInternal(defaults)
+            defaults
         }
     }
 

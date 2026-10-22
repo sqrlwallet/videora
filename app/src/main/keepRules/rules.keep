@@ -1,12 +1,20 @@
-# Add project specific R8 rules here.
-# AGP will combine all keep rule files in src/main/keepRules to pass to R8
-#
-# For more details, see
-#   https://d.android.com/r/tools/r8/keep-rules
+# R8 / ProGuard Keep Rules for Videora
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep all data models for Gson reflection
+-keep class com.kevan.videorabykevan.model.** { *; }
+-keepclassmembers class com.kevan.videorabykevan.model.** { *; }
+
+# Keep Gson TypeToken and serialization attributes
+-keepattributes Signature, *Annotation*, EnclosingMethod, InnerClasses
+-keep class com.google.gson.** { *; }
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+
+# Keep AndroidX Media3 ExoPlayer & Transformer
+-keep class androidx.media3.** { *; }
+-keepclassmembers class androidx.media3.** { *; }
+-dontwarn androidx.media3.**
+
+# Keep Coil
+-keep class coil.** { *; }
+-dontwarn coil.**

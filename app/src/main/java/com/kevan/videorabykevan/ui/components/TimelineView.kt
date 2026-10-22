@@ -95,14 +95,14 @@ fun TimelineView(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = String.format("%02d:%02d.%d", curMin, curSecRem, curMillis),
+                    text = String.format(java.util.Locale.US, "%02d:%02d.%d", curMin, curSecRem, curMillis),
                     color = AccentCyan,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = String.format(" / %02d:%02d", totMin, totSecRem),
+                    text = String.format(java.util.Locale.US, " / %02d:%02d", totMin, totSecRem),
                     color = Color.White.copy(alpha = 0.5f),
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace
@@ -262,7 +262,7 @@ fun TimelineView(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = String.format("%.1fs", clip.playbackDurationMs / 1000f),
+                                            text = String.format(java.util.Locale.US, "%.1fs", clip.playbackDurationMs / 1000f),
                                             color = Color.White.copy(alpha = 0.7f),
                                             fontSize = 10.sp
                                         )
