@@ -62,6 +62,11 @@ data class EditorUiState(
 
 private const val MIN_OVERLAY_MS = 300L
 
+private val PART_SUFFIX = Regex("""(\s\(Part \d+\))+$""")
+
+/** "Beach (Part 2)" split again gives "Beach (Part 1)"/"Beach (Part 2)", not "Beach (Part 2) (Part 1)". */
+internal fun splitPartName(name: String, part: Int): String = "${name.replace(PART_SUFFIX, "")} (Part $part)"
+
 /** One-off feedback shown as a snackbar; [offerUndo] adds an Undo action. */
 data class EditorMessage(val text: String, val offerUndo: Boolean = false)
 
@@ -69,7 +74,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     private val repository = ProjectRepository(application.applicationContext)
     val playerManager = VideoPlayerManager(application.applicationContext, viewModelScope)
-    val exportManager = VideoExportManager(application.applicationContext, viewModelScope)
+    val exportManager = VideoExportManager.getInstance(application)
 
     val playerState: StateFlow<PlayerState> = playerManager.playerState
     val exportState: StateFlow<ExportProgressState> = exportManager.exportState
@@ -444,12 +449,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
                 val clipPart1 = targetClip.copy(
                     id = java.util.UUID.randomUUID().toString(),
-                    name = "${targetClip.name} (Part 1)",
+                    name = splitPartName(targetClip.name, 1),
                     trimEndMs = absoluteSplitMs
                 )
                 val clipPart2 = targetClip.copy(
                     id = java.util.UUID.randomUUID().toString(),
-                    name = "${targetClip.name} (Part 2)",
+                    name = splitPartName(targetClip.name, 2),
                     trimStartMs = absoluteSplitMs
                 )
 
@@ -764,18 +769,21 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun updateAudioVolume(volume: Float) {
-        val tracks = _uiState.value.project.audioTracks.map { it.copy(volume = volume) }
-        val updatedProject = _uiState.value.project.copy(audioTracks = tracks)
-        _uiState.value = _uiState.value.copy(project = updatedProject)
-        persistProject()
+    /** Opens a track's own tools from the audio sheet (unlike the timeline tap, never toggles it off). */
+    fun focusAudioTrack(id: String) {
+        if (_uiState.value.selectedAudioTrackId != id) selectAudioTrack(id)
     }
 
-    fun removeAudioTrack() {
+    fun deleteAudioTrack(id: String) {
+        val tracks = _uiState.value.project.audioTracks
+        if (tracks.none { it.id == id }) return
         pushUndoState(_uiState.value.project)
-        val updatedProject = _uiState.value.project.copy(audioTracks = emptyList())
-        _uiState.value = _uiState.value.copy(project = updatedProject)
+        _uiState.value = _uiState.value.copy(
+            project = _uiState.value.project.copy(audioTracks = tracks.filterNot { it.id == id }),
+            selectedAudioTrackId = _uiState.value.selectedAudioTrackId.takeUnless { it == id }
+        )
         persistProject()
+        showMessage("Audio removed", offerUndo = true)
     }
 
     fun toggleMuteAllClips() {

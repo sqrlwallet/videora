@@ -12,6 +12,7 @@ import com.kevan.videorabykevan.model.TextOverlay
 import com.kevan.videorabykevan.model.TextStylePreset
 import com.kevan.videorabykevan.model.VideoClip
 import com.kevan.videorabykevan.model.VideoFilter
+import com.kevan.videorabykevan.ui.viewmodel.splitPartName
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -249,5 +250,14 @@ class VideoraUnitTest {
         assertEquals("Renamed", clip.copy(name = "Renamed").name)
 
         assertEquals(TextStylePreset.VIRAL_HOOK, project.textOverlays.single().style)
+    }
+
+    @Test
+    fun testSplitPartNamesDoNotAccumulate() {
+        assertEquals("Beach (Part 1)", splitPartName("Beach", 1))
+        assertEquals("Beach (Part 2)", splitPartName("Beach (Part 1)", 2))
+        assertEquals("Beach (Part 1)", splitPartName("Beach (Part 2) (Part 1)", 1))
+        // Only a trailing suffix is stripped
+        assertEquals("Part (Part 3) of trip (Part 1)", splitPartName("Part (Part 3) of trip", 1))
     }
 }

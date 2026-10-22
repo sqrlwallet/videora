@@ -138,7 +138,7 @@ fun ExportDialog(
                             )
 
                             Text(
-                                text = "Encoding locally on hardware GPU. Zero cloud uploads.",
+                                text = "Encoding on this phone. You can leave the app; it keeps going in the background.",
                                 color = Color.White.copy(alpha = 0.6f),
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(top = 4.dp)

@@ -61,7 +61,7 @@ Never let critical text hooks, face details, or stickers get blocked by platform
   - 💥 **Dramatic Bass Boom**: Sub-bass impact
   - 🪙 **Success Ding**: Gamified coin sound
   - 📸 **Camera Snap**: Flash snapshot click
-- **Device Music**: Add local `.mp3`, `.wav`, or `.m4a` music tracks with independent volume sliders.
+- **Device Music**: Add local `.mp3`, `.wav`, or `.m4a` music tracks. Every track is listed in the Audio sheet; tap one for its own volume, loop, move and delete tools.
 
 ### 🪝 6. Viral Text Hooks, Templates & Emoji Stickers
 - **Viral Hook Templates**: One-tap hook titles (*"POV: Nobody is talking about this 🤫"*, *"Wait until the end... 😱"*, *"Stop scrolling right now! 🛑"*, *"3 secrets you didn't know 💡"*).
@@ -86,6 +86,7 @@ Real-time GPU shader matrices:
   - `YouTube Shorts HQ`: 1080x1920 @ 60fps (max clarity)
   - `Instagram Reels`: 1080x1920 @ 30fps (compression optimized)
   - `Quick Draft`: 720x1280 @ 30fps (fast preview export)
+- **Background export**: encoding keeps going if you switch apps or lock the phone, with a progress notification (and Cancel) via a foreground service.
 - Direct save to device `Movies/Videora/` and auto-indexing in Android MediaStore / Google Photos.
 - Direct one-tap **"Share to TikTok / Reels / Shorts"** using Android's native share sheet.
 

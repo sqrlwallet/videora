@@ -1,7 +1,7 @@
 # Videora: Agent Handover
 
 Context for an agent continuing work on this repo. Read this before changing code.
-Last updated 2026-10-22, at commit `0c3a458` on `main` (pushed to `origin`).
+Last updated 2026-10-22, on branch `feat/handover-backlog-round` (off `main` at `5ce79cb`; not merged or pushed yet).
 
 ## 1. What the app is
 
@@ -18,7 +18,7 @@ About 9k lines of Kotlin in a single `app` module.
 | Media3 | **1.5.1** (pinned; see gotchas) |
 | Images | Coil 2.7.0 (+ `coil-video` for frame thumbnails) |
 | Persistence | Gson 2.11.0, one JSON file |
-| Version | `versionName 1.2.3`, `versionCode 7` (not bumped for the latest work) |
+| Version | `versionName 1.3.0`, `versionCode 8` (no APK built for it yet; README's download table still lists v1.2.3) |
 | Remote | `https://github.com/sqrlwallet/videora` |
 
 ## 2. Build and test
@@ -30,7 +30,7 @@ export JAVA_HOME=/snap/android-studio/current/jbr
 ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
 ```
 
-- Unit tests: `app/src/test/.../VideoraUnitTest.kt` and `ColorCorrectionTest.kt` (26 tests, all passing).
+- Unit tests: `app/src/test/.../VideoraUnitTest.kt` and `ColorCorrectionTest.kt` (27 tests, all passing).
   They are plain JVM tests with no Robolectric. Code that touches `android.*` classes can't be unit tested,
   so keep logic in pure Kotlin where possible (as `ClipColorMatrix` and `ProjectJson` do).
 - The release build uses R8 with `app/src/main/keepRules/rules.keep`. Everything in `model.**` is kept for Gson.
@@ -57,7 +57,10 @@ data/
   BuiltInAudioHelper, VoiceRecorderHelper, SampleMediaHelper (synthesized SFX, mic, demo clip)
 engine/
   VideoPlayerManager   ExoPlayer playlist of clips + one ExoPlayer per audio track, kept in sync
-  VideoExportManager   Builds a Media3 Composition and exports to MediaStore Movies/Videora
+  VideoExportManager   Process-wide singleton (getInstance). Builds a Media3 Composition and exports
+                       to MediaStore Movies/Videora
+  ExportService        Foreground service started with each export; mirrors exportState into a
+                       progress notification (Cancel action) and a result notification, then stops
   ClipColorMatrix      SINGLE source of truth for clip color (filter + correction)
   TextOverlayRenderer  OverlayMetrics (shared sizing) + BitmapOverlay that draws text for export
 ui/
@@ -123,6 +126,16 @@ ui/
      `content://` URIs get copied in (`ProjectMediaStore.adoptFile` / `localizeMedia`).
      Duplicating a project copies the folder; deleting a project deletes it.
 
+7. **Background export:** `VideoExportManager` is one per process with its own
+   `SupervisorJob` scope, so it outlives the `EditorViewModel`. `exportProject` ignores a call while
+   an export is running. After `transformer.start` it starts `ExportService`, which only reflects
+   state; it never drives the export. FGS type is `mediaProcessing` on API 35+ and `dataSync` on 29–34
+   (both declared in the manifest). `POST_NOTIFICATIONS` is requested when an export starts, and the
+   export runs whether or not it's granted.
+
+8. **Volume is capped at 100% everywhere.** ExoPlayer can't play louder, so the export's
+   `volumeProcessor` clamps to 1 as well, which also tames old projects saved with the former 150% slider.
+
 ### Conventions
 - Match the existing style: Compose with explicit theme colors from `ui/theme/Color.kt`
   (`GoldChampagne`, `AccentCyan`, `NeonCoral`, `DarkSurface`...), short intent comments.
@@ -146,6 +159,11 @@ areas most likely to fail:
 - **Timeline:** scrub detection via the interaction source; pinch-zoom alongside one-finger scrolling.
 - **Text position change:** positions changed from top-left to center semantics, so text the user
   dragged in older projects shifts by half its size.
+- **Background export (new):** the foreground service start, notification updates, the Cancel
+  action, and the export surviving the app being backgrounded. Also check that tapping the
+  notification brings the app back without restarting the editor.
+- **Audio sheet (new):** now lists every track; tapping a row closes the sheet and selects that
+  track (its timeline audio toolbar should appear).
 - **Noir B&W** now uses the luma-based grayscale from the shared matrix, so it looks slightly
   different from older exports.
 
@@ -162,8 +180,8 @@ High value:
 4. **Auto-captions** from on-device speech recognition into `TextOverlay`s.
 5. **Audio fades / ducking** under voiceover (needs a time-varying gain audio processor in the
    export and volume ramps in the preview).
-6. **Background export** through a foreground service. Currently, leaving the editor can stop the
-   export, since it runs in `viewModelScope`.
+6. ~~Background export~~ (done; see design decision 7). Possible follow-up: show an "exporting"
+   indicator on the Home screen and in other projects' editors, since the state is global now.
 
 Medium:
 - Trimming audio tracks and text directly on the timeline (dragging chip edges), and dragging
@@ -174,15 +192,17 @@ Medium:
 - A blurred background for Fit mode instead of black bars.
 - Clean up orphaned clip files (kept on purpose so undo works; never deleted until the project is).
 - Split the large files: `EditorViewModel` (~840 lines), `HomeScreen` (~965), `TimelineView` (~720).
-- Update the README and bump `versionName`/`versionCode` for this round of features.
+- Build and attach an APK for v1.3.0 and add it to the README download table (owner's release step).
 
 Known smaller issues:
-- `AudioSheet` still treats `audioTracks.first()` as "the" track, and its Remove clears **all** tracks.
-  Per-track tools now live in the timeline's audio toolbar, so this sheet should be reconciled with them.
-- Repeated splits keep adding to clip names ("(Part 1) (Part 2)...").
 - `HomeViewModel.createDemoProject` uses fully-qualified names inline. Tidy it if you touch it.
-- Clip and audio volume max out at 100% in the preview (ExoPlayer limit), while `AudioSheet`'s
-  slider goes to 150%. The export honours >1, so the preview and export disagree above 100%.
+- `addVideoUris` copies picked clips to `projects/<id>/clips`, not `ProjectMediaStore`'s `media`
+  folder. Both are inside the project folder so duplicate/delete work, but it's inconsistent.
+- Volume boost above 100% would need a gain `AudioProcessor` in the preview's ExoPlayer
+  (custom `RenderersFactory`), then the export clamp in `volumeProcessor` can be lifted.
+
+Fixed in the 1.3.0 round: AudioSheet's first-track/remove-all behavior (now a per-track list),
+the 150% preview/export volume mismatch, and split names piling up (`splitPartName`, unit tested).
 
 ## 6. Gotchas
 

@@ -40,6 +40,7 @@ import com.kevan.videorabykevan.model.VideoClip
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,10 +61,12 @@ data class ExportProgressState(
     val isSuccess: Boolean = false
 )
 
-class VideoExportManager(
-    private val context: Context,
-    private val coroutineScope: CoroutineScope
-) {
+/**
+ * One per process (see [getInstance]) and outlives any editor screen, so an export keeps going
+ * after the user leaves the editor; [ExportService] keeps the process alive meanwhile.
+ */
+class VideoExportManager private constructor(private val context: Context) {
+    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _exportState = MutableStateFlow(ExportProgressState())
     val exportState: StateFlow<ExportProgressState> = _exportState.asStateFlow()
 
@@ -71,6 +74,8 @@ class VideoExportManager(
     private var progressPollingJob: Job? = null
 
     fun exportProject(project: Project, preset: ExportPreset) {
+        // Transformer runs one export at a time; a second one would also clobber the shared state
+        if (_exportState.value.isExporting) return
         if (project.clips.isEmpty()) {
             _exportState.value = ExportProgressState(
                 error = "Cannot export empty project. Add at least one video clip."
@@ -149,6 +154,7 @@ class VideoExportManager(
             val composition = buildComposition(project, preset)
 
             transformer.start(composition, tempOutputFile.absolutePath)
+            ExportService.start(context)
 
             // Start polling progress
             progressPollingJob?.cancel()
@@ -307,8 +313,12 @@ class VideoExportManager(
             .build()
     }
 
-    /** Scales PCM samples by [volume]; null when no change is needed. */
-    private fun volumeProcessor(volume: Float): AudioProcessor? {
+    /**
+     * Scales PCM samples by [requested]; null when no change is needed. Capped at 100% because the
+     * preview's ExoPlayer can't play louder, and older projects may still hold boosts up to 150%.
+     */
+    private fun volumeProcessor(requested: Float): AudioProcessor? {
+        val volume = requested.coerceIn(0f, 1f)
         if (volume == 1.0f) return null
         return ChannelMixingAudioProcessor().apply {
             for (channels in 1..MAX_CHANNELS) {
@@ -372,6 +382,14 @@ class VideoExportManager(
 
     companion object {
         private const val MAX_CHANNELS = 8
+
+        @Volatile
+        private var instance: VideoExportManager? = null
+
+        fun getInstance(context: Context): VideoExportManager =
+            instance ?: synchronized(this) {
+                instance ?: VideoExportManager(context.applicationContext).also { instance = it }
+            }
 
         fun createShareIntent(context: Context, file: File?, mediaUri: Uri?): Intent {
             val shareUri = mediaUri ?: file?.let {

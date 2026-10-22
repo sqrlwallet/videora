@@ -1,6 +1,9 @@
 package com.kevan.videorabykevan.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -60,6 +63,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -119,6 +123,11 @@ fun EditorScreen(
             viewModel.setAudioTrack(uri, title)
         }
     }
+
+    // Only for the export progress notification; the export runs whether or not it's granted
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { }
 
     LaunchedEffect(projectId) {
         viewModel.loadProject(projectId)
@@ -500,15 +509,15 @@ fun EditorScreen(
 
         if (uiState.showAudioSheet) {
             AudioSheet(
-                activeAudioTrack = uiState.project.audioTracks.firstOrNull(),
+                audioTracks = uiState.project.audioTracks,
                 allClipsMuted = uiState.project.clips.isNotEmpty() && uiState.project.clips.all { it.isMuted },
                 onDismiss = { viewModel.setShowAudioSheet(false) },
                 onPickAudioFile = { audioPickerLauncher.launch("audio/*") },
                 onOpenVoiceover = { viewModel.setShowVoiceoverSheet(true) },
                 onAddSoundEffect = { viewModel.addBuiltInSoundEffect(it, context) },
-                onUpdateAudioVolume = { viewModel.updateAudioVolume(it) },
                 onToggleMuteOriginalAudio = { viewModel.toggleMuteAllClips() },
-                onRemoveAudioTrack = { viewModel.removeAudioTrack() }
+                onSelectAudioTrack = { viewModel.focusAudioTrack(it) },
+                onRemoveAudioTrack = { viewModel.deleteAudioTrack(it) }
             )
         }
 
@@ -531,7 +540,14 @@ fun EditorScreen(
         if (uiState.showExportDialog) {
             ExportDialog(
                 exportState = exportState,
-                onStartExport = { preset -> viewModel.startExport(preset) },
+                onStartExport = { preset ->
+                    viewModel.startExport(preset)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                },
                 onCancelExport = { viewModel.cancelExport() },
                 onDismiss = {
                     viewModel.setShowExportDialog(false)

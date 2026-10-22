@@ -30,22 +30,16 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevan.videorabykevan.data.BuiltInAudioHelper
@@ -55,22 +49,22 @@ import com.kevan.videorabykevan.ui.theme.AccentCyan
 import com.kevan.videorabykevan.ui.theme.AccentPink
 import com.kevan.videorabykevan.ui.theme.DarkCard
 import com.kevan.videorabykevan.ui.theme.DarkSurface
-import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
+import java.util.Locale
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AudioSheet(
-    activeAudioTrack: AudioTrack?,
+    audioTracks: List<AudioTrack>,
     allClipsMuted: Boolean,
     onDismiss: () -> Unit,
     onPickAudioFile: () -> Unit,
     onOpenVoiceover: () -> Unit,
     onAddSoundEffect: (SoundEffectItem) -> Unit,
-    onUpdateAudioVolume: (Float) -> Unit,
     onToggleMuteOriginalAudio: () -> Unit,
-    onRemoveAudioTrack: () -> Unit
+    onSelectAudioTrack: (String) -> Unit,
+    onRemoveAudioTrack: (String) -> Unit
 ) {
-    var volume by remember { mutableFloatStateOf(activeAudioTrack?.volume ?: 0.8f) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -205,61 +199,27 @@ fun AudioSheet(
                 )
             }
 
-            // Background Music Card if loaded
-            if (activeAudioTrack != null) {
+            // Every track on the timeline; tapping one opens its own tools (volume, loop, move, delete)
+            if (audioTracks.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(14.dp))
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DarkCard)
-                        .padding(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(AccentCyan.copy(alpha = 0.2f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.GraphicEq, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(activeAudioTrack.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text("Attached to Timeline", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
-                            }
-                        }
-
-                        IconButton(onClick = onRemoveAudioTrack) {
-                            Icon(Icons.Default.Delete, contentDescription = "Remove", tint = Color(0xFFFF453A), modifier = Modifier.size(20.dp))
-                        }
+                Text(
+                    text = "On the timeline",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    audioTracks.forEach { track ->
+                        AudioTrackRow(
+                            track = track,
+                            onClick = {
+                                onSelectAudioTrack(track.id)
+                                onDismiss()
+                            },
+                            onRemove = { onRemoveAudioTrack(track.id) }
+                        )
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Track Volume", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-                        Text("${(volume * 100).toInt()}%", color = AccentCyan, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-
-                    Slider(
-                        value = volume,
-                        onValueChange = {
-                            volume = it
-                            onUpdateAudioVolume(it)
-                        },
-                        valueRange = 0f..1.5f,
-                        colors = SliderDefaults.colors(thumbColor = AccentCyan, activeTrackColor = AccentCyan)
-                    )
                 }
             }
 
@@ -267,3 +227,50 @@ fun AudioSheet(
         }
     }
 }
+
+@Composable
+private fun AudioTrackRow(
+    track: AudioTrack,
+    onClick: () -> Unit,
+    onRemove: () -> Unit
+) {
+    val accent = if (track.isVoiceover) AccentPink else AccentCyan
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(DarkCard)
+            .clickable(onClick = onClick)
+            .padding(start = 12.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .background(accent.copy(alpha = 0.2f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                if (track.isVoiceover) Icons.Default.Mic else Icons.Default.GraphicEq,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(track.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val details = buildList {
+                add("Starts ${formatSeconds(track.timelineStartOffsetMs)}")
+                add("${(track.volume * 100).roundToInt()}%")
+                if (track.isLooping) add("Loops")
+            }
+            Text(details.joinToString(" • "), color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
+        }
+        IconButton(onClick = onRemove) {
+            Icon(Icons.Default.Delete, contentDescription = "Remove ${track.title}", tint = Color(0xFFFF453A), modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+private fun formatSeconds(ms: Long): String = "%.1fs".format(Locale.US, ms / 1000f)
