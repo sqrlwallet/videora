@@ -1,7 +1,6 @@
 package com.kevan.videorabykevan.ui.components
 
-import android.view.ViewGroup
-import android.widget.FrameLayout
+import android.view.LayoutInflater
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -9,7 +8,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
@@ -37,7 +36,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,7 +50,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.kevan.videorabykevan.R
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.SafeZoneType
 import com.kevan.videorabykevan.model.TextOverlay
@@ -58,7 +62,6 @@ import com.kevan.videorabykevan.ui.theme.DarkBackground
 import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
 import com.kevan.videorabykevan.ui.theme.GoldChampagne
 import com.kevan.videorabykevan.ui.theme.GoldRimGradient
-import com.kevan.videorabykevan.ui.theme.LuxuryGoldGradient
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -79,6 +82,9 @@ fun VideoPlayerView(
     onGenerateDemoClipClicked: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Allows toggling between TikTok/Reels full-bleed crop (Fill) and letterboxed view (Fit)
+    var isFillMode by remember { mutableStateOf(true) }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -94,16 +100,23 @@ fun VideoPlayerView(
                 .background(Color.Black)
         ) {
             if (hasClips) {
-                // ExoPlayer surface
+                // Media3 PlayerView inflated from XML with TextureView surface
+                // TextureView prevents black screen inside Compose, allows rounded clipping, and lets overlays display properly!
                 AndroidView(
                     factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            useController = false
-                            player = exoPlayer
-                            layoutParams = FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
+                        val view = LayoutInflater.from(ctx).inflate(R.layout.media3_player_view, null) as PlayerView
+                        view.player = exoPlayer
+                        view.resizeMode = if (isFillMode) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        view.setOnClickListener { onTogglePlayPause() }
+                        view
+                    },
+                    update = { view ->
+                        if (view.player != exoPlayer) {
+                            view.player = exoPlayer
+                        }
+                        val targetResizeMode = if (isFillMode) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        if (view.resizeMode != targetResizeMode) {
+                            view.resizeMode = targetResizeMode
                         }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -125,6 +138,36 @@ fun VideoPlayerView(
                     modifier = Modifier.fillMaxSize()
                 )
 
+                // Fit / Fill Aspect Mode Pill (Top-Right)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(10.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                        .clickable { isFillMode = !isFillMode }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            if (isFillMode) Icons.Default.CropFree else Icons.Default.FitScreen,
+                            contentDescription = "Aspect mode",
+                            tint = GoldChampagne,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = if (isFillMode) "Fill" else "Fit",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 // Buffering indicator
                 if (isBuffering) {
                     Box(
@@ -132,43 +175,34 @@ fun VideoPlayerView(
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(
-                            color = AccentCyan,
+                            color = GoldChampagne,
                             modifier = Modifier.size(44.dp)
                         )
                     }
                 }
 
-                // Tap canvas to play/pause with animated indicator
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            onTogglePlayPause()
-                        },
-                    contentAlignment = Alignment.Center
+                // Center Floating Play Indicator (only when paused)
+                AnimatedVisibility(
+                    visible = !isPlaying && !isBuffering,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.Center)
                 ) {
-                    AnimatedVisibility(
-                        visible = !isPlaying && !isBuffering,
-                        enter = fadeIn(),
-                        exit = fadeOut()
+                    Box(
+                        modifier = Modifier
+                            .size(62.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.65f))
+                            .border(2.dp, GoldRimGradient, CircleShape)
+                            .clickable { onTogglePlayPause() },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(60.dp)
-                                .background(Color.Black.copy(alpha = 0.65f), CircleShape)
-                                .border(2.dp, GoldRimGradient, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.PlayArrow,
-                                contentDescription = "Play",
-                                tint = GoldChampagne,
-                                modifier = Modifier.size(34.dp)
-                            )
-                        }
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "Play",
+                            tint = GoldChampagne,
+                            modifier = Modifier.size(36.dp)
+                        )
                     }
                 }
             } else {

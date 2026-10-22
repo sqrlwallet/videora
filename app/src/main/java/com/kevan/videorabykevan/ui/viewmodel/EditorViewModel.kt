@@ -22,6 +22,7 @@ import com.kevan.videorabykevan.model.SafeZoneType
 import com.kevan.videorabykevan.model.TextOverlay
 import com.kevan.videorabykevan.model.VideoClip
 import com.kevan.videorabykevan.model.VideoFilter
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -136,29 +137,60 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             val newClips = mutableListOf<VideoClip>()
+            val projectDir = File(context.filesDir, "projects/${_uiState.value.project.id}/clips")
 
             withContext(Dispatchers.IO) {
-                for (uri in uris) {
-                    val retriever = MediaMetadataRetriever()
+                projectDir.mkdirs()
+                for ((index, uri) in uris.withIndex()) {
                     try {
-                        retriever.setDataSource(context, uri)
-                        val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                        val durationMs = durationStr?.toLongOrNull() ?: 5000L
-                        val title = uri.lastPathSegment?.substringAfterLast('/') ?: "Clip ${newClips.size + 1}"
+                        // Copy content URI to local storage for instant zero-latency seeks and 100% persistent playback
+                        val targetFile = File(projectDir, "clip_${System.currentTimeMillis()}_$index.mp4")
+                        var copiedSuccessfully = false
 
-                        newClips.add(
-                            VideoClip(
-                                uri = uri.toString(),
-                                name = title,
-                                durationMs = durationMs,
-                                trimStartMs = 0L,
-                                trimEndMs = durationMs
+                        try {
+                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                targetFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            copiedSuccessfully = targetFile.exists() && targetFile.length() > 0
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+
+                        val finalUri = if (copiedSuccessfully) {
+                            Uri.fromFile(targetFile).toString()
+                        } else {
+                            uri.toString()
+                        }
+
+                        val retriever = MediaMetadataRetriever()
+                        try {
+                            if (copiedSuccessfully) {
+                                retriever.setDataSource(targetFile.absolutePath)
+                            } else {
+                                retriever.setDataSource(context, uri)
+                            }
+                            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                            val durationMs = durationStr?.toLongOrNull() ?: 5000L
+                            val title = uri.lastPathSegment?.substringAfterLast('/') ?: "Clip ${newClips.size + 1}"
+
+                            newClips.add(
+                                VideoClip(
+                                    uri = finalUri,
+                                    name = title,
+                                    durationMs = durationMs,
+                                    trimStartMs = 0L,
+                                    trimEndMs = durationMs
+                                )
                             )
-                        )
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        } finally {
+                            try { retriever.release() } catch (_: Exception) {}
+                        }
                     } catch (e: Exception) {
                         e.printStackTrace()
-                    } finally {
-                        try { retriever.release() } catch (_: Exception) {}
                     }
                 }
             }

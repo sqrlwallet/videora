@@ -86,15 +86,17 @@ class VideoPlayerManager(
         }
 
         val mediaItems = clips.map { clip ->
-            val clippingConfig = MediaItem.ClippingConfiguration.Builder()
-                .setStartPositionMs(clip.trimStartMs)
-                .setEndPositionMs(if (clip.trimEndMs > 0) clip.trimEndMs else clip.durationMs)
-                .build()
-
-            MediaItem.Builder()
-                .setUri(Uri.parse(clip.uri))
-                .setClippingConfiguration(clippingConfig)
-                .build()
+            val builder = MediaItem.Builder().setUri(Uri.parse(clip.uri))
+            val isTrimmed = clip.trimStartMs > 0L || (clip.trimEndMs > 0L && clip.trimEndMs < clip.durationMs)
+            if (isTrimmed) {
+                val endMs = if (clip.trimEndMs > 0L) clip.trimEndMs else clip.durationMs
+                val clippingConfig = MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(clip.trimStartMs)
+                    .setEndPositionMs(endMs)
+                    .build()
+                builder.setClippingConfiguration(clippingConfig)
+            }
+            builder.build()
         }
 
         exoPlayer.setMediaItems(mediaItems)
