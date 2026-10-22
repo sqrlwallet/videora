@@ -58,7 +58,9 @@ data class ExportProgressState(
     val error: String? = null,
     val exportedFile: File? = null,
     val mediaStoreUri: Uri? = null,
-    val isSuccess: Boolean = false
+    val isSuccess: Boolean = false,
+    // Lets screens outside the editor say which project is exporting
+    val projectTitle: String = ""
 )
 
 /**
@@ -91,6 +93,7 @@ class VideoExportManager private constructor(private val context: Context) {
 
         _exportState.value = ExportProgressState(
             isExporting = true,
+            projectTitle = project.title,
             progress = 0f,
             statusText = "Configuring ${preset.title}..."
         )
@@ -221,12 +224,18 @@ class VideoExportManager private constructor(private val context: Context) {
         val trimStartMs = track.trimStartMs.coerceAtLeast(0L)
         val knownLengthMs = track.effectiveDurationMs.takeIf { track.trimEndMs > trimStartMs }
 
+        val trackLengthMs = track.timelineLengthMs(projectDurationMs)
         val items = mutableListOf<EditedMediaItem>()
         var remainingMs = availableMs
         do {
             // Unknown source length: play once from the trim start, cut off at the end of the video
             val segmentMs = knownLengthMs?.let { minOf(it, remainingMs) } ?: remainingMs
-            items += buildAudioItem(track, trimStartMs, trimStartMs + segmentMs)
+            val audioProcessor = if (track.hasFades) {
+                FadeAudioProcessor(track, track.volume.coerceIn(0f, 1f), availableMs - remainingMs, trackLengthMs)
+            } else {
+                volumeProcessor(track.volume)
+            }
+            items += buildAudioItem(track, trimStartMs, trimStartMs + segmentMs, audioProcessor)
             remainingMs -= segmentMs
         } while (track.isLooping && knownLengthMs != null && remainingMs > 0L)
 
@@ -237,7 +246,7 @@ class VideoExportManager private constructor(private val context: Context) {
         return builder.addItems(items).build()
     }
 
-    private fun buildAudioItem(track: AudioTrack, startMs: Long, endMs: Long): EditedMediaItem {
+    private fun buildAudioItem(track: AudioTrack, startMs: Long, endMs: Long, audioProcessor: AudioProcessor?): EditedMediaItem {
         val mediaItem = MediaItem.Builder()
             .setUri(Uri.parse(track.uri))
             .setClippingConfiguration(
@@ -250,7 +259,7 @@ class VideoExportManager private constructor(private val context: Context) {
 
         return EditedMediaItem.Builder(mediaItem)
             .setRemoveVideo(true)
-            .setEffects(Effects(listOfNotNull(volumeProcessor(track.volume)), emptyList()))
+            .setEffects(Effects(listOfNotNull(audioProcessor), emptyList()))
             .build()
     }
 

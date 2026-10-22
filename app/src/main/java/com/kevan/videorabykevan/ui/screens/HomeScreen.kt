@@ -74,6 +74,7 @@ import coil.request.ImageRequest
 import coil.request.videoFrameMillis
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.Project
+import com.kevan.videorabykevan.ui.components.ExportProgressBanner
 import com.kevan.videorabykevan.ui.components.OpenSourceSheet
 import com.kevan.videorabykevan.ui.theme.DarkBackground
 import com.kevan.videorabykevan.ui.theme.DarkCard
@@ -103,6 +104,7 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+    val exportState by viewModel.exportState.collectAsState()
     var showOpenSourceInfo by remember { mutableStateOf(false) }
     var projectPendingDelete by remember { mutableStateOf<Project?>(null) }
     var projectBeingRenamed by remember { mutableStateOf<Project?>(null) }
@@ -225,6 +227,12 @@ fun HomeScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
+                if (exportState.isExporting) {
+                    item {
+                        ExportProgressBanner(exportState = exportState, onCancel = { viewModel.cancelExport() })
+                    }
+                }
+
                 // Section 1: Privacy Guarantee Ribbon
                 item {
                     PrivacyBannerRibbon(onClick = { showOpenSourceInfo = true })

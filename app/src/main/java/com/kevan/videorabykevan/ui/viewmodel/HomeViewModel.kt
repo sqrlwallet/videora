@@ -1,13 +1,22 @@
 package com.kevan.videorabykevan.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kevan.videorabykevan.data.ProjectMediaStore
 import com.kevan.videorabykevan.data.ProjectRepository
+import com.kevan.videorabykevan.data.SampleMediaHelper
+import com.kevan.videorabykevan.engine.ExportProgressState
+import com.kevan.videorabykevan.engine.VideoExportManager
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.Project
 import com.kevan.videorabykevan.model.SafeZoneType
+import com.kevan.videorabykevan.model.TextOverlay
+import com.kevan.videorabykevan.model.TextStylePreset
+import com.kevan.videorabykevan.model.VideoClip
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +30,12 @@ data class HomeUiState(
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = ProjectRepository(application.applicationContext)
+    private val exportManager = VideoExportManager.getInstance(application)
+
+    /** A background export started from an editor; shown as a banner on the home screen. */
+    val exportState: StateFlow<ExportProgressState> = exportManager.exportState
+
+    fun cancelExport() = exportManager.cancelExport()
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -55,31 +70,31 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun createDemoProject(
-        context: android.content.Context,
+        context: Context,
         onCreated: (String) -> Unit
     ) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
-                val projectId = java.util.UUID.randomUUID().toString()
-                val generatedFile = com.kevan.videorabykevan.data.SampleMediaHelper.generateSampleVideoClip(
+                val projectId = UUID.randomUUID().toString()
+                val generatedFile = SampleMediaHelper.generateSampleVideoClip(
                     context = context,
                     clipTitle = "Viral Demo Scene",
                     durationSeconds = 5
                 )
                 val clipFile = ProjectMediaStore.adoptFile(context, projectId, generatedFile, move = true)
-                val clip = com.kevan.videorabykevan.model.VideoClip(
-                    uri = android.net.Uri.fromFile(clipFile).toString(),
+                val clip = VideoClip(
+                    uri = Uri.fromFile(clipFile).toString(),
                     name = "Starter Clip (5s)",
                     durationMs = 5000L,
                     trimEndMs = 5000L
                 )
-                val starterOverlay = com.kevan.videorabykevan.model.TextOverlay(
+                val starterOverlay = TextOverlay(
                     text = "🔥 STOP SCROLLING!",
                     startTimeMs = 0L,
                     endTimeMs = 3000L,
                     fontSizeSp = 28f,
-                    style = com.kevan.videorabykevan.model.TextStylePreset.VIRAL_HOOK
+                    style = TextStylePreset.VIRAL_HOOK
                 )
                 val demoProject = Project(
                     id = projectId,

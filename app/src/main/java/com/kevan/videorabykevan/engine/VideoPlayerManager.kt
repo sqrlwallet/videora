@@ -242,6 +242,10 @@ class VideoPlayerManager(
                 continue
             }
 
+            // Volume follows the fade ramps; the export applies the same gains (AudioTrack.fadeGainAt)
+            val trackLengthMs = entry.track.timelineLengthMs(_playerState.value.totalDurationMs)
+            player.volume = entry.track.volume.coerceIn(0f, 1f) * entry.track.fadeGainAt(offsetMs, trackLengthMs)
+
             val targetMs = if (entry.track.isLooping && lengthMs != null) offsetMs % lengthMs else offsetMs
             if (forceSeek || abs(player.currentPosition - targetMs) > AUDIO_DRIFT_TOLERANCE_MS) {
                 player.seekTo(targetMs)

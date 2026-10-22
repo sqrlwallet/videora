@@ -1,7 +1,7 @@
 # Videora: Agent Handover
 
 Context for an agent continuing work on this repo. Read this before changing code.
-Last updated 2026-10-22, on branch `feat/handover-backlog-round` (off `main` at `5ce79cb`; not merged or pushed yet).
+Last updated 2026-10-22, on branch `feat/handover-backlog-round` (off `main` at `5ce79cb`; two commits, not merged or pushed yet).
 
 ## 1. What the app is
 
@@ -30,7 +30,7 @@ export JAVA_HOME=/snap/android-studio/current/jbr
 ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
 ```
 
-- Unit tests: `app/src/test/.../VideoraUnitTest.kt` and `ColorCorrectionTest.kt` (27 tests, all passing).
+- Unit tests: `app/src/test/.../VideoraUnitTest.kt` and `ColorCorrectionTest.kt` (30 tests, all passing).
   They are plain JVM tests with no Robolectric. Code that touches `android.*` classes can't be unit tested,
   so keep logic in pure Kotlin where possible (as `ClipColorMatrix` and `ProjectJson` do).
 - The release build uses R8 with `app/src/main/keepRules/rules.keep`. Everything in `model.**` is kept for Gson.
@@ -48,7 +48,8 @@ model/        Pure data classes, all Gson-serialized
   Project            clips, audioTracks, textOverlays, aspectRatio, safeZone, isFitMode
   VideoClip          trim, speed, volume, isMuted, filter, rotation (clockwise), flip,
                      color correction: exposure, brightness, contrast, temperature, tint, saturation, hue (-1..1)
-  AudioTrack         uri, timelineStartOffsetMs, trimStart/End, volume, isLooping, isVoiceover
+  AudioTrack         uri, timelineStartOffsetMs, trimStart/End, volume, isLooping, isVoiceover,
+                     fadeInMs/fadeOutMs; timelineLengthMs() + fadeGainAt() = shared fade math
   TextOverlay        text, style, size, colors, posX/posY (= CENTER, normalized), start/end ms, isSticker
   ExportPreset       resolution class, fps, bitrates; outputSizeFor(aspectRatio)
 data/
@@ -59,6 +60,7 @@ engine/
   VideoPlayerManager   ExoPlayer playlist of clips + one ExoPlayer per audio track, kept in sync
   VideoExportManager   Process-wide singleton (getInstance). Builds a Media3 Composition and exports
                        to MediaStore Movies/Videora
+  FadeAudioProcessor   Per-segment volume + fade ramp for audio tracks in the export (PCM16/float)
   ExportService        Foreground service started with each export; mirrors exportState into a
                        progress notification (Cancel action) and a result notification, then stops
   ClipColorMatrix      SINGLE source of truth for clip color (filter + correction)
@@ -136,6 +138,15 @@ ui/
 8. **Volume is capped at 100% everywhere.** ExoPlayer can't play louder, so the export's
    `volumeProcessor` clamps to 1 as well, which also tames old projects saved with the former 150% slider.
 
+9. **Audio fades** follow the "preview must match export" rule through `AudioTrack.fadeGainAt`.
+   The export uses `FadeAudioProcessor` on each segment of the track's sequence (a looping track
+   has several, so each gets its start offset). The preview sets the track player's volume from the
+   same function on every sync tick (~33 ms). Fades are relative to the track's span on the timeline
+   (`timelineLengthMs`): its own end, or the video's end for looping tracks.
+   Music and SFX now get their length measured when added (`ProjectMediaStore.measureAudioTracks`),
+   and older tracks without a length are measured on load. Before this, a looping music track with
+   no length only played once in the export.
+
 ### Conventions
 - Match the existing style: Compose with explicit theme colors from `ui/theme/Color.kt`
   (`GoldChampagne`, `AccentCyan`, `NeonCoral`, `DarkSurface`...), short intent comments.
@@ -162,6 +173,9 @@ areas most likely to fail:
 - **Background export (new):** the foreground service start, notification updates, the Cancel
   action, and the export surviving the app being backgrounded. Also check that tapping the
   notification brings the app back without restarting the editor.
+- **Audio fades (new):** listen in the preview and in an export, especially a looping track's
+  fade-out and a track that starts mid-video. A 16-bit vs float PCM mix-up would sound like loud noise.
+- **Home export banner (new):** appears on Home while exporting; its Cancel stops the export.
 - **Audio sheet (new):** now lists every track; tapping a row closes the sheet and selects that
   track (its timeline audio toolbar should appear).
 - **Noir B&W** now uses the luma-based grayscale from the shared matrix, so it looks slightly
@@ -178,12 +192,14 @@ High value:
 3. **Photo/image clips** (slideshows). Transformer supports images (`setDurationUs` + `setFrameRate`).
    The preview needs ExoPlayer image support or a placeholder.
 4. **Auto-captions** from on-device speech recognition into `TextOverlay`s.
-5. **Audio fades / ducking** under voiceover (needs a time-varying gain audio processor in the
-   export and volume ramps in the preview).
-6. ~~Background export~~ (done; see design decision 7). Possible follow-up: show an "exporting"
-   indicator on the Home screen and in other projects' editors, since the state is global now.
+5. ~~Audio fades~~ (done; decision 9). **Ducking** under voiceover is next: it can reuse
+   `FadeAudioProcessor`'s approach, with gain computed from the voiceover tracks' spans.
+6. ~~Background export~~ (done; decision 7). Home shows a progress banner. Another project's
+   editor still opens the shared export dialog showing that progress, which is acceptable but could
+   say which project it belongs to (`ExportProgressState.projectTitle` is available).
 
 Medium:
+- Draw fade ramps on the timeline's audio chips.
 - Trimming audio tracks and text directly on the timeline (dragging chip edges), and dragging
   chips to move them in time.
 - Pinch/rotate text and stickers on the canvas (sizes are only set through the sheet today).
@@ -195,7 +211,6 @@ Medium:
 - Build and attach an APK for v1.3.0 and add it to the README download table (owner's release step).
 
 Known smaller issues:
-- `HomeViewModel.createDemoProject` uses fully-qualified names inline. Tidy it if you touch it.
 - `addVideoUris` copies picked clips to `projects/<id>/clips`, not `ProjectMediaStore`'s `media`
   folder. Both are inside the project folder so duplicate/delete work, but it's inconsistent.
 - Volume boost above 100% would need a gain `AudioProcessor` in the preview's ExoPlayer
@@ -203,6 +218,7 @@ Known smaller issues:
 
 Fixed in the 1.3.0 round: AudioSheet's first-track/remove-all behavior (now a per-track list),
 the 150% preview/export volume mismatch, and split names piling up (`splitPartName`, unit tested).
+Also tidied: `HomeViewModel.createDemoProject`'s fully-qualified names.
 
 ## 6. Gotchas
 

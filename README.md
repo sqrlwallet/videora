@@ -61,7 +61,7 @@ Never let critical text hooks, face details, or stickers get blocked by platform
   - 💥 **Dramatic Bass Boom**: Sub-bass impact
   - 🪙 **Success Ding**: Gamified coin sound
   - 📸 **Camera Snap**: Flash snapshot click
-- **Device Music**: Add local `.mp3`, `.wav`, or `.m4a` music tracks. Every track is listed in the Audio sheet; tap one for its own volume, loop, move and delete tools.
+- **Device Music**: Add local `.mp3`, `.wav`, or `.m4a` music tracks. Every track is listed in the Audio sheet; tap one for its own volume, loop, fade in/out, move and delete tools.
 
 ### 🪝 6. Viral Text Hooks, Templates & Emoji Stickers
 - **Viral Hook Templates**: One-tap hook titles (*"POV: Nobody is talking about this 🤫"*, *"Wait until the end... 😱"*, *"Stop scrolling right now! 🛑"*, *"3 secrets you didn't know 💡"*).

@@ -1,8 +1,10 @@
 package com.kevan.videorabykevan.data
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import com.kevan.videorabykevan.model.AudioTrack
 import com.kevan.videorabykevan.model.Project
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,6 +38,30 @@ object ProjectMediaStore {
             if (move) file.delete()
             target
         }
+
+    /**
+     * Fills in the length of audio tracks saved without one (picked music and SFX used to be added
+     * that way). Looping and fade-outs need it; tracks that can't be read are left unchanged.
+     */
+    suspend fun measureAudioTracks(context: Context, tracks: List<AudioTrack>): List<AudioTrack> = withContext(Dispatchers.IO) {
+        tracks.map { track ->
+            if (track.trimEndMs > track.trimStartMs) return@map track
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, Uri.parse(track.uri))
+                val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                if (durationMs != null && durationMs > track.trimStartMs) {
+                    track.copy(durationMs = durationMs, trimEndMs = durationMs)
+                } else {
+                    track
+                }
+            } catch (e: Exception) {
+                track
+            } finally {
+                try { retriever.release() } catch (_: Exception) {}
+            }
+        }
+    }
 
     /**
      * Rewrites every clip and audio URI that points at the cache or a content:// URI into a copy

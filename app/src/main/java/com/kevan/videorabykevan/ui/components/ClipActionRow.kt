@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.RotateRight
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AddCircle
@@ -105,6 +106,7 @@ fun ClipActionRow(
     onOpenAudioVolume: () -> Unit,
     onMoveAudioToPlayhead: () -> Unit,
     onToggleAudioLoop: () -> Unit,
+    onOpenAudioFades: () -> Unit,
     onDeleteAudio: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -187,6 +189,12 @@ fun ClipActionRow(
                         if (track.isLooping) "Loop on" else "Loop off",
                         if (track.isLooping) GoldChampagne else Color.White,
                         onClick = onToggleAudioLoop
+                    )
+                    ActionButton(
+                        Icons.AutoMirrored.Filled.TrendingUp,
+                        "Fade",
+                        if (track.hasFades) GoldChampagne else Color.White,
+                        onClick = onOpenAudioFades
                     )
                     ActionButton(Icons.Default.Delete, "Delete", Color(0xFFFF453A), onClick = onDeleteAudio)
                     HintLabel(track.title)

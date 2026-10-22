@@ -260,4 +260,42 @@ class VideoraUnitTest {
         // Only a trailing suffix is stripped
         assertEquals("Part (Part 3) of trip (Part 1)", splitPartName("Part (Part 3) of trip", 1))
     }
+
+    @Test
+    fun testAudioFadeGain() {
+        val track = AudioTrack(uri = "file:///m.mp3", durationMs = 10_000L, fadeInMs = 2000L, fadeOutMs = 1000L)
+        assertEquals(0f, track.fadeGainAt(0L, 10_000L), 0.001f)
+        assertEquals(0.5f, track.fadeGainAt(1000L, 10_000L), 0.001f)
+        assertEquals(1f, track.fadeGainAt(5000L, 10_000L), 0.001f)
+        assertEquals(0.5f, track.fadeGainAt(9500L, 10_000L), 0.001f)
+        assertEquals(0f, track.fadeGainAt(10_000L, 10_000L), 0.001f)
+
+        // Fades longer than half the track are shortened so they meet in the middle
+        val short = track.copy(fadeInMs = 5000L, fadeOutMs = 5000L)
+        assertEquals(1f, short.fadeGainAt(1500L, 3000L), 0.001f)
+        assertEquals(0.5f, short.fadeGainAt(750L, 3000L), 0.001f)
+
+        assertEquals(1f, track.copy(fadeInMs = 0L, fadeOutMs = 0L).fadeGainAt(0L, 10_000L), 0f)
+    }
+
+    @Test
+    fun testAudioTimelineLength() {
+        val music = AudioTrack(uri = "file:///m.mp3", durationMs = 4000L, timelineStartOffsetMs = 1000L)
+        assertEquals(4000L, music.timelineLengthMs(10_000L))
+        // Cut off at the end of the video
+        assertEquals(2000L, music.timelineLengthMs(3000L))
+        // Looping fills the rest of the video
+        assertEquals(9000L, music.copy(isLooping = true).timelineLengthMs(10_000L))
+        // Unknown length (older saves) is assumed to run to the end
+        assertEquals(9000L, music.copy(durationMs = 0L, trimEndMs = 0L).timelineLengthMs(10_000L))
+    }
+
+    @Test
+    fun testOldAudioTrackDecodesWithoutFades() {
+        val json = """[{"id":"p1","audioTracks":[{"id":"a1","uri":"file:///m.mp3","volume":1.5}]}]"""
+        val track = ProjectJson.decode(json).single().audioTracks.single()
+        assertEquals(0L, track.fadeInMs)
+        assertEquals(0L, track.fadeOutMs)
+        assertFalse(track.hasFades)
+    }
 }

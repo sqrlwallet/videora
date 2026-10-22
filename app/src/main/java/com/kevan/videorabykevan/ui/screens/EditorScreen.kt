@@ -72,6 +72,7 @@ import com.kevan.videorabykevan.ui.components.AdjustSheet
 import com.kevan.videorabykevan.ui.components.AudioSheet
 import com.kevan.videorabykevan.ui.components.ClipActionRow
 import com.kevan.videorabykevan.ui.components.ExportDialog
+import com.kevan.videorabykevan.ui.components.FadeSheet
 import com.kevan.videorabykevan.ui.components.FilterSheet
 import com.kevan.videorabykevan.ui.components.OpenSourceSheet
 import com.kevan.videorabykevan.ui.components.SafeZoneSheet
@@ -424,6 +425,7 @@ fun EditorScreen(
                 onOpenAudioVolume = { viewModel.setShowVolumeSheet(true) },
                 onMoveAudioToPlayhead = { viewModel.moveSelectedAudioToPlayhead() },
                 onToggleAudioLoop = { viewModel.toggleSelectedAudioLoop() },
+                onOpenAudioFades = { viewModel.setShowFadeSheet(true) },
                 onDeleteAudio = { viewModel.deleteSelectedAudioTrack() }
             )
         }
@@ -460,6 +462,14 @@ fun EditorScreen(
                 initialVolume = if (selectedClip.isMuted) 0f else selectedClip.volume,
                 onDismiss = { viewModel.setShowVolumeSheet(false) },
                 onSetVolume = { viewModel.setSelectedClipVolume(it) }
+            )
+        }
+
+        if (uiState.showFadeSheet && selectedAudioTrack != null) {
+            FadeSheet(
+                track = selectedAudioTrack,
+                onDismiss = { viewModel.setShowFadeSheet(false) },
+                onSetFades = { fadeIn, fadeOut -> viewModel.setSelectedAudioFades(fadeIn, fadeOut) }
             )
         }
 

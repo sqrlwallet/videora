@@ -57,6 +57,7 @@ data class EditorUiState(
     val showStickerSheet: Boolean = false,
     val showVolumeSheet: Boolean = false,
     val showAdjustSheet: Boolean = false,
+    val showFadeSheet: Boolean = false,
     val isComparingOriginal: Boolean = false
 )
 
@@ -109,7 +110,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             // Move media the project still reads from the cache or from expiring content:// grants
             // into the project's own folder, so it keeps working after the cache is cleared
             val context = getApplication<Application>().applicationContext
-            val updatedProject = ProjectMediaStore.localizeMedia(context, project)
+            val localized = ProjectMediaStore.localizeMedia(context, project)
+            val updatedProject = localized.copy(audioTracks = ProjectMediaStore.measureAudioTracks(context, localized.audioTracks))
             if (updatedProject != project) {
                 repository.saveProject(updatedProject)
             }
@@ -703,6 +705,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleSelectedAudioLoop() = updateSelectedAudioTrack { it.copy(isLooping = !it.isLooping) }
 
+    fun setSelectedAudioFades(fadeInMs: Long, fadeOutMs: Long) = updateSelectedAudioTrack {
+        it.copy(fadeInMs = fadeInMs.coerceAtLeast(0L), fadeOutMs = fadeOutMs.coerceAtLeast(0L))
+    }
+
     fun deleteSelectedAudioTrack() {
         updateSelectedAudioTrack { null }
         showMessage("Audio removed", offerUndo = true)
@@ -721,7 +727,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             val ownedTrack = ProjectMediaStore.localizeMedia(
                 context,
                 Project(id = _uiState.value.project.id, audioTracks = listOf(audioTrack))
-            ).audioTracks.first()
+            ).audioTracks.let { ProjectMediaStore.measureAudioTracks(context, it) }.first()
             pushUndoState(_uiState.value.project)
             // Added alongside existing sound effects and voiceovers instead of replacing them
             val updatedProject = _uiState.value.project.copy(audioTracks = _uiState.value.project.audioTracks + ownedTrack)
@@ -736,12 +742,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             // The generated SFX lives in the cache and is shared by all projects, so copy it
             val file = ProjectMediaStore.adoptFile(context, _uiState.value.project.id, sharedFile, move = false)
             val currentPos = playerState.value.currentPositionMs
-            val audioTrack = AudioTrack(
-                uri = Uri.fromFile(file).toString(),
-                title = "${effect.iconEmoji} ${effect.name}",
-                timelineStartOffsetMs = currentPos,
-                volume = 0.9f
-            )
+            val audioTrack = ProjectMediaStore.measureAudioTracks(
+                context,
+                listOf(
+                    AudioTrack(
+                        uri = Uri.fromFile(file).toString(),
+                        title = "${effect.iconEmoji} ${effect.name}",
+                        timelineStartOffsetMs = currentPos,
+                        volume = 0.9f
+                    )
+                )
+            ).first()
             pushUndoState(_uiState.value.project)
             val list = _uiState.value.project.audioTracks + audioTrack
             val updated = _uiState.value.project.copy(audioTracks = list)
@@ -834,6 +845,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun setShowStickerSheet(show: Boolean) = _uiState.update { it.copy(showStickerSheet = show) }
     fun setShowVolumeSheet(show: Boolean) = _uiState.update { it.copy(showVolumeSheet = show) }
     fun setShowAdjustSheet(show: Boolean) = _uiState.update { it.copy(showAdjustSheet = show) }
+    fun setShowFadeSheet(show: Boolean) = _uiState.update { it.copy(showFadeSheet = show) }
 
     private inline fun MutableStateFlow<EditorUiState>.update(function: (EditorUiState) -> EditorUiState) {
         value = function(value)
