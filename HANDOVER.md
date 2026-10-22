@@ -1,8 +1,7 @@
 # Videora: Agent Handover
 
 Context for an agent continuing work on this repo. Read this before changing code.
-Last updated 2026-10-22, on branch `feat/ai-phase1-openrouter-key` (off `main` after the v1.3.0
-release; AI Phase 1, not merged or released yet).
+Last updated 2026-10-22, on `main`: v1.3.0 release plus AI Phase 1 (not released yet).
 
 ## 1. What the app is
 
@@ -236,7 +235,7 @@ High value:
    Media3 upgrade.
 3. **Photo/image clips** (slideshows). Transformer supports images (`setDurationUs` + `setFrameRate`).
    The preview needs ExoPlayer image support or a placeholder.
-4. **AI features (ai edition), in phases.** Phase 1 is done on this branch: editions, key storage,
+4. **AI features (ai edition), in phases.** Phase 1 is done (on `main`, unreleased): editions, key storage,
    key check, model picker. Next:
    - **Phase 2, hooks and post captions (text only):** add `chat()` to `AiClient`
      (POST `/api/v1/chat/completions`, `response_format` JSON); "Generate hooks" returns ~5 options
