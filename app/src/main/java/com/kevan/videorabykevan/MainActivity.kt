@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kevan.videorabykevan.ai.AiEdition
 import com.kevan.videorabykevan.ui.screens.EditorScreen
 import com.kevan.videorabykevan.ui.screens.HomeScreen
 import com.kevan.videorabykevan.ui.theme.DarkBackground
@@ -55,7 +56,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun VideoraApp() {
     var activeProjectId by remember { mutableStateOf<String?>(null) }
+    var showAiSettings by remember { mutableStateOf(false) }
     val homeViewModel: HomeViewModel = viewModel()
+
+    if (showAiSettings) {
+        AiEdition.SettingsScreen(onBack = { showAiSettings = false })
+        return
+    }
 
     AnimatedContent(
         targetState = activeProjectId,
@@ -77,6 +84,11 @@ fun VideoraApp() {
                 viewModel = homeViewModel,
                 onOpenProject = { id ->
                     activeProjectId = id
+                },
+                onOpenAiSettings = if (AiEdition.isAvailable) {
+                    { showAiSettings = true }
+                } else {
+                    null
                 }
             )
         } else {

@@ -91,6 +91,13 @@ Real-time GPU shader matrices:
 - Direct save to device `Movies/Videora/` and auto-indexing in Android MediaStore / Google Photos.
 - Direct one-tap **"Share to TikTok / Reels / Shorts"** using Android's native share sheet.
 
+### 🤖 Optional AI Edition (bring your own OpenRouter key)
+A separate `ai` build adds AI features powered by your own [OpenRouter](https://openrouter.ai) key. The default build stays fully offline and doesn't even request internet access.
+- Paste your key in **AI settings** (✨ on the home screen). It's encrypted on the phone, excluded from backups, and you can check its remaining credit there.
+- Choose the model for each feature. The default tracks the latest Gemini Flash.
+- Nothing is sent until you tap an AI action, and usage is billed to your own OpenRouter account.
+- Coming next: AI hook and caption ideas, then auto-captions from your clips' speech.
+
 ### 🔒 9. 100% Local & Privacy-First
 - **No Sign-ups**: Never asks for an email, password, phone number, or login.
 - **No Cloud Uploads**: Clips, audios, and exports never leave your hardware.
@@ -155,14 +162,18 @@ com.kevan.videorabykevan/
 git clone https://github.com/sqrlwallet/videora.git
 cd videora
 
-# Build debug APK
-./gradlew assembleDebug
+# Build the offline edition (default: no network access at all)
+./gradlew assembleOfflineDebug
+
+# Build the AI edition (opt-in features with your own OpenRouter key)
+./gradlew assembleAiDebug
 
 # Run unit tests
-./gradlew testDebugUnitTest
+./gradlew testOfflineDebugUnitTest testAiDebugUnitTest
 
-# Build signed release APK
-./gradlew assembleRelease
+# Build signed release APKs (one Gradle call per edition)
+./gradlew assembleOfflineRelease
+./gradlew assembleAiRelease
 ```
 
 ---

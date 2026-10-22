@@ -1,12 +1,15 @@
 # Videora: Agent Handover
 
 Context for an agent continuing work on this repo. Read this before changing code.
-Last updated 2026-10-22, on `main`, released as **v1.3.0** (tag `v1.3.0`, APK on the GitHub release).
+Last updated 2026-10-22, on branch `feat/ai-phase1-openrouter-key` (off `main` after the v1.3.0
+release; AI Phase 1, not merged or released yet).
 
 ## 1. What the app is
 
 Videora is an offline, privacy-first Android video editor for vertical short-form video
-(TikTok / Reels / Shorts). It has no accounts, no network calls and no telemetry. Kotlin +
+(TikTok / Reels / Shorts). It has no accounts and no telemetry. The default **offline** edition
+makes no network calls and has no INTERNET permission; the opt-in **ai** edition adds
+bring-your-own-OpenRouter-key AI features (see decision 10). Kotlin +
 Jetpack Compose UI, AndroidX Media3 for playback (ExoPlayer) and export (Transformer).
 About 9k lines of Kotlin in a single `app` module.
 
@@ -19,6 +22,7 @@ About 9k lines of Kotlin in a single `app` module.
 | Images | Coil 2.7.0 (+ `coil-video` for frame thumbnails) |
 | Persistence | Gson 2.11.0, one JSON file |
 | Version | `versionName 1.3.0`, `versionCode 8` (released 2026-10-22 as `videora-v1.3.0.apk`) |
+| Build flavors | `offline` (default, no INTERNET) and `ai` (versionName suffix `-ai`, same applicationId) |
 | Remote | `https://github.com/sqrlwallet/videora` |
 
 ## 2. Build and test
@@ -27,10 +31,19 @@ There is no `java` on PATH. Use Android Studio's bundled JDK:
 
 ```bash
 export JAVA_HOME=/snap/android-studio/current/jbr
-./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
+./gradlew :app:testOfflineDebugUnitTest :app:testAiDebugUnitTest
+./gradlew :app:assembleOfflineRelease :app:assembleOfflineDebug
+./gradlew :app:assembleAiRelease :app:assembleAiDebug
 ```
 
-- Unit tests: `app/src/test/.../VideoraUnitTest.kt` and `ColorCorrectionTest.kt` (30 tests, all passing).
+- With flavors, the old unflavored tasks (`testDebugUnitTest`, `assembleRelease`) no longer exist;
+  `assembleRelease` builds both editions. Building all four APKs in one Gradle call made the daemon
+  run out of memory here, so build one edition per call.
+- After a release build, confirm the offline APK has no INTERNET permission:
+  `~/Android/Sdk/build-tools/36.0.0/aapt dump badging <apk> | grep INTERNET` (expect nothing).
+
+- Unit tests: `app/src/test/.../VideoraUnitTest.kt`, `ColorCorrectionTest.kt` and `OpenRouterTest.kt`
+  (35 tests, all passing in both flavors).
   They are plain JVM tests with no Robolectric. Code that touches `android.*` classes can't be unit tested,
   so keep logic in pure Kotlin where possible (as `ClipColorMatrix` and `ProjectJson` do).
 - The release build uses R8 with `app/src/main/keepRules/rules.keep`. Everything in `model.**` is kept for Gson.
@@ -65,6 +78,15 @@ engine/
                        progress notification (Cancel action) and a result notification, then stops
   ClipColorMatrix      SINGLE source of truth for clip color (filter + correction)
   TextOverlayRenderer  OverlayMetrics (shared sizing) + BitmapOverlay that draws text for export
+ai/                     (package com.kevan.videorabykevan.ai, split across source sets)
+  src/main     OpenRouter.kt  AiTask, AiKeyInfo, AiModel, AiError, AiClient interface,
+                              OpenRouterJson (parsing + HTTP error mapping), AiKeyFormat. Pure Kotlin.
+  src/offline  AiEdition      stub: isAvailable = false, client() = null, empty SettingsScreen
+  src/ai       AiEdition      isAvailable = true, client() = OpenRouterClient when a key is saved
+               ApiKeyStore    Keystore AES-GCM encrypted key + per-task model IDs in prefs "videora_ai"
+               OpenRouterClient  HttpURLConnection (no new deps); GET /key, GET /models
+               AiSettingsScreen / AiSettingsViewModel  key paste/check/remove, model picker
+               AndroidManifest.xml  adds INTERNET (merged only into the ai edition)
 ui/
   screens/EditorScreen    wires everything; snackbar (undo), BackHandler, sheets
   screens/HomeScreen      project list, rename/delete dialogs, thumbnails
@@ -147,11 +169,28 @@ ui/
    and older tracks without a length are measured on load. Before this, a looping music track with
    no length only played once in the export.
 
+10. **Two editions (build flavors).** The `offline` edition must never gain network code or the
+   INTERNET permission. Shared code talks to AI only through `AiEdition` (same members in
+   `src/offline` and `src/ai`) and the `AiClient` interface in `src/main`. Put anything that does
+   I/O or needs a network in `src/ai`; keep prompt building and response parsing in `src/main` as
+   pure Kotlin so it's unit tested in both flavors. Rules for AI features:
+   - Nothing is sent without an explicit tap on an AI action. A feature's first use should say what
+     will be uploaded (Phase 2+).
+   - AI results become ordinary edits: one `pushUndoState` per applied result, never auto-applied.
+   - Model IDs are user-configurable per `AiTask`. The default is the alias
+     `~google/gemini-flash-latest` (takes text + audio), so it doesn't go stale.
+   - Parse JSON with `JsonParser`, not Gson reflection, so no new R8 keep rules are needed.
+     (`AiSettingsViewModel` has a keep rule because the ViewModel factory creates it reflectively.)
+   - The key is excluded from backups (`res/xml/backup_rules.xml`, `data_extraction_rules.xml`).
+
 ### Releasing
-`./gradlew :app:assembleRelease`, copy `app/build/outputs/apk/release/app-release.apk` to
-`videora-v<version>.apk` in the root (`*.apk` is gitignored), add a row to the README download table,
-tag `v<version>` on `main`, then `gh release create` with the APK attached. Release builds are
-signed with the debug key (see `app/build.gradle.kts`), the same as all earlier releases.
+Build each edition's release (see section 2), then copy
+`app/build/outputs/apk/offline/release/app-offline-release.apk` to `videora-v<version>.apk` and
+`app/build/outputs/apk/ai/release/app-ai-release.apk` to `videora-ai-v<version>.apk` in the root
+(`*.apk` is gitignored). Add a row to the README download table, tag `v<version>` on `main`, then
+`gh release create` with both APKs attached. Release builds are signed with the debug key (see
+`app/build.gradle.kts`), the same as all earlier releases. Both editions share the applicationId,
+so installing one over the other keeps the user's projects.
 
 ### Conventions
 - Match the existing style: Compose with explicit theme colors from `ui/theme/Color.kt`
@@ -197,7 +236,18 @@ High value:
    Media3 upgrade.
 3. **Photo/image clips** (slideshows). Transformer supports images (`setDurationUs` + `setFrameRate`).
    The preview needs ExoPlayer image support or a placeholder.
-4. **Auto-captions** from on-device speech recognition into `TextOverlay`s.
+4. **AI features (ai edition), in phases.** Phase 1 is done on this branch: editions, key storage,
+   key check, model picker. Next:
+   - **Phase 2, hooks and post captions (text only):** add `chat()` to `AiClient`
+     (POST `/api/v1/chat/completions`, `response_format` JSON); "Generate hooks" returns ~5 options
+     that become a VIRAL_HOOK `TextOverlay`; a post caption + hashtags with a copy button after export.
+   - **Phase 3, auto-captions:** extract project audio (audio-only Transformer export), chunk long
+     videos, send to POST `/api/v1/audio/transcriptions` (fallback: `input_audio` in chat), map
+     segment timestamps from source time to timeline time (trim, speed, muted clips) as pure, tested
+     Kotlin, then add caption overlays. First prototype whether the chosen models return per-segment
+     timestamps; captions can't be timed without them. Show an estimated cost before sending.
+   - **Phase 4, frame-based suggestions:** a few frames to a vision model for suggested color
+     settings (clamped to the existing -1..1 controls) or a cover frame.
 5. ~~Audio fades~~ (done; decision 9). **Ducking** under voiceover is next: it can reuse
    `FadeAudioProcessor`'s approach, with gain computed from the voiceover tracks' spans.
 6. ~~Background export~~ (done; decision 7). Home shows a progress banner. Another project's

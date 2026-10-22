@@ -19,6 +19,20 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // "offline" is the default, network-free build (no INTERNET permission). "ai" adds the
+    // bring-your-own-OpenRouter-key features; its extra code and manifest live in src/ai.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("offline") {
+            dimension = "edition"
+            isDefault = true
+        }
+        create("ai") {
+            dimension = "edition"
+            versionNameSuffix = "-ai"
+        }
+    }
+
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")

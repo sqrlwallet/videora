@@ -100,7 +100,9 @@ import com.kevan.videorabykevan.ui.viewmodel.HomeViewModel
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onOpenProject: (String) -> Unit
+    onOpenProject: (String) -> Unit,
+    // Null in the offline edition, which has no AI settings
+    onOpenAiSettings: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -170,6 +172,11 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    if (onOpenAiSettings != null) {
+                        IconButton(onClick = onOpenAiSettings) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = "AI settings", tint = GoldChampagne)
+                        }
+                    }
                     // Privacy & Offline Signal Pill
                     Row(
                         modifier = Modifier
@@ -188,7 +195,8 @@ fun HomeScreen(
                                 .background(EmeraldAccent)
                         )
                         Text(
-                            text = "100% Local",
+                            // The AI edition can send data when asked, so it doesn't claim 100% local
+                            text = if (onOpenAiSettings != null) "Local-first" else "100% Local",
                             color = TextPrimary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold

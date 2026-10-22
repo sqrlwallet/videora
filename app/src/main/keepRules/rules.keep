@@ -21,3 +21,6 @@
 
 # Keep ViewModels
 -keep class com.kevan.videorabykevan.ui.viewmodel.** { *; }
+
+# AI edition: its settings ViewModel is created reflectively by the default ViewModel factory
+-keep class com.kevan.videorabykevan.ai.AiSettingsViewModel { <init>(...); }
