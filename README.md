@@ -14,7 +14,8 @@ Download the signed, installable APK from the [Latest GitHub Release](https://gi
 
 | Release | Version | Size | Highlights |
 | :--- | :--- | :--- | :--- |
-| **Latest** | **v1.2.2** | **3.6 MB** | TextureView preview fix, NLE scrollable filmstrip, video thumbnails, fit/fill toggle, 77% size reduction |
+| **Latest** | **v1.2.3** | **3.6 MB** | Layout constraint fix (bounded timeline height, 9:16 viewport restoration), legacy URI auto-caching |
+| Previous | v1.2.2 | 3.6 MB | TextureView preview fix, NLE scrollable filmstrip, video thumbnails, fit/fill toggle, 77% size reduction |
 | Previous | v1.1.0 | 15.2 MB | Multi-level undo/redo, voiceover studio, synthesized soundboard, emoji stickers |
 
 ---

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -94,7 +95,8 @@ fun VideoPlayerView(
         // Enforce aspect ratio viewport (9:16 portrait standard for TikTok / Shorts / Reels)
         Box(
             modifier = Modifier
-                .aspectRatio(aspectRatioPreset.aspectRatio)
+                .fillMaxHeight()
+                .aspectRatio(aspectRatioPreset.aspectRatio, matchHeightConstraintsFirst = true)
                 .clip(RoundedCornerShape(16.dp))
                 .border(1.5.dp, GoldRimGradient, RoundedCornerShape(16.dp))
                 .background(Color.Black)

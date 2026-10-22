@@ -273,9 +273,11 @@ fun TimelineView(
         // ==========================================
         // 2. Proportional Scrollable NLE Filmstrip (CapCut / Reels style)
         // ==========================================
+        val filmstripTrackHeight = if (audioTracks.isNotEmpty()) 114.dp else 90.dp
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(filmstripTrackHeight)
                 .padding(horizontal = 4.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(DarkBackground)

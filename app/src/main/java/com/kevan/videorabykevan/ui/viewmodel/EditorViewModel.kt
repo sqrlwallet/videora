@@ -68,16 +68,52 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             val project = repository.getProject(projectId) ?: Project(id = projectId)
+
+            // Upgrade any legacy content:// URIs to local storage so they never fail on expired permissions
+            val context = getApplication<Application>().applicationContext
+            val projectDir = File(context.filesDir, "projects/${project.id}/clips")
+            val resolvedClips = withContext(Dispatchers.IO) {
+                projectDir.mkdirs()
+                project.clips.mapIndexed { index, clip ->
+                    if (clip.uri.startsWith("content://")) {
+                        try {
+                            val targetFile = File(projectDir, "clip_${clip.id}.mp4")
+                            if (!targetFile.exists() || targetFile.length() == 0L) {
+                                context.contentResolver.openInputStream(Uri.parse(clip.uri))?.use { input ->
+                                    targetFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                            }
+                            if (targetFile.exists() && targetFile.length() > 0L) {
+                                clip.copy(uri = Uri.fromFile(targetFile).toString())
+                            } else {
+                                clip
+                            }
+                        } catch (_: Exception) {
+                            clip
+                        }
+                    } else {
+                        clip
+                    }
+                }
+            }
+
+            val updatedProject = project.copy(clips = resolvedClips)
+            if (resolvedClips != project.clips) {
+                repository.saveProject(updatedProject)
+            }
+
             undoStack.clear()
             redoStack.clear()
             _uiState.value = _uiState.value.copy(
-                project = project,
+                project = updatedProject,
                 selectedClipIndex = 0,
                 canUndo = false,
                 canRedo = false,
                 isLoading = false
             )
-            playerManager.setClips(project.clips, keepPosition = false)
+            playerManager.setClips(updatedProject.clips, keepPosition = false)
         }
     }
 
