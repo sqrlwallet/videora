@@ -1,7 +1,7 @@
 # Videora: Agent Handover
 
 Context for an agent continuing work on this repo. Read this before changing code.
-Last updated 2026-10-22, on branch `feat/handover-backlog-round` (off `main` at `5ce79cb`; two commits, not merged or pushed yet).
+Last updated 2026-10-22, on `main`, released as **v1.3.0** (tag `v1.3.0`, APK on the GitHub release).
 
 ## 1. What the app is
 
@@ -18,7 +18,7 @@ About 9k lines of Kotlin in a single `app` module.
 | Media3 | **1.5.1** (pinned; see gotchas) |
 | Images | Coil 2.7.0 (+ `coil-video` for frame thumbnails) |
 | Persistence | Gson 2.11.0, one JSON file |
-| Version | `versionName 1.3.0`, `versionCode 8` (no APK built for it yet; README's download table still lists v1.2.3) |
+| Version | `versionName 1.3.0`, `versionCode 8` (released 2026-10-22 as `videora-v1.3.0.apk`) |
 | Remote | `https://github.com/sqrlwallet/videora` |
 
 ## 2. Build and test
@@ -147,6 +147,12 @@ ui/
    and older tracks without a length are measured on load. Before this, a looping music track with
    no length only played once in the export.
 
+### Releasing
+`./gradlew :app:assembleRelease`, copy `app/build/outputs/apk/release/app-release.apk` to
+`videora-v<version>.apk` in the root (`*.apk` is gitignored), add a row to the README download table,
+tag `v<version>` on `main`, then `gh release create` with the APK attached. Release builds are
+signed with the debug key (see `app/build.gradle.kts`), the same as all earlier releases.
+
 ### Conventions
 - Match the existing style: Compose with explicit theme colors from `ui/theme/Color.kt`
   (`GoldChampagne`, `AccentCyan`, `NeonCoral`, `DarkSurface`...), short intent comments.
@@ -208,7 +214,6 @@ Medium:
 - A blurred background for Fit mode instead of black bars.
 - Clean up orphaned clip files (kept on purpose so undo works; never deleted until the project is).
 - Split the large files: `EditorViewModel` (~840 lines), `HomeScreen` (~965), `TimelineView` (~720).
-- Build and attach an APK for v1.3.0 and add it to the README download table (owner's release step).
 
 Known smaller issues:
 - `addVideoUris` copies picked clips to `projects/<id>/clips`, not `ProjectMediaStore`'s `media`
