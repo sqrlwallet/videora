@@ -2,6 +2,8 @@ package com.kevan.videorabykevan.engine
 
 import android.content.Context
 import android.net.Uri
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -39,6 +41,15 @@ class VideoPlayerManager(
 
     init {
         exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
+
+        // Configure audio attributes with automatic audio focus handling.
+        // When another app plays sound or the user navigates away, playback pauses cleanly.
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
+        exoPlayer.setAudioAttributes(audioAttributes, true)
+
         exoPlayer.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 updateState()
@@ -52,9 +63,9 @@ class VideoPlayerManager(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 updateState()
                 if (playbackState == Player.STATE_ENDED) {
-                    // Loop back to beginning for short-form previewing
+                    // When playback completes, stop and reset to start (do not play in background or endlessly loop)
                     seekToTimeline(0L)
-                    exoPlayer.play()
+                    exoPlayer.pause()
                 }
             }
 

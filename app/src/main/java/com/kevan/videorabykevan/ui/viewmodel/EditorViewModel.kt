@@ -536,6 +536,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         persistProject()
     }
 
+    fun pause() {
+        playerManager.pause()
+    }
+
     // Export
     fun startExport(preset: ExportPreset) {
         playerManager.pause()

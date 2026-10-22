@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,6 +50,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,6 +74,8 @@ import com.kevan.videorabykevan.ui.theme.AccentCyan
 import com.kevan.videorabykevan.ui.theme.DarkBackground
 import com.kevan.videorabykevan.ui.theme.DarkCard
 import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
+import com.kevan.videorabykevan.ui.theme.GoldChampagne
+import com.kevan.videorabykevan.ui.theme.GoldMetallic
 import com.kevan.videorabykevan.ui.viewmodel.EditorViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,6 +113,21 @@ fun EditorScreen(
 
     LaunchedEffect(projectId) {
         viewModel.loadProject(projectId)
+    }
+
+    // Stop playback automatically when leaving the screen or backgrounding the app
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                viewModel.pause()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.pause()
+        }
     }
 
     val selectedClip = uiState.project.clips.getOrNull(uiState.selectedClipIndex)
@@ -190,7 +211,10 @@ fun EditorScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = {
+                        viewModel.pause()
+                        onNavigateBack()
+                    }) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
@@ -208,7 +232,7 @@ fun EditorScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.Undo,
                             contentDescription = "Undo",
-                            tint = if (uiState.canUndo) AccentCyan else Color.White.copy(alpha = 0.3f),
+                            tint = if (uiState.canUndo) GoldChampagne else Color.White.copy(alpha = 0.25f),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -222,7 +246,7 @@ fun EditorScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.Redo,
                             contentDescription = "Redo",
-                            tint = if (uiState.canRedo) AccentCyan else Color.White.copy(alpha = 0.3f),
+                            tint = if (uiState.canRedo) GoldChampagne else Color.White.copy(alpha = 0.25f),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -233,7 +257,7 @@ fun EditorScreen(
                     Button(
                         onClick = { viewModel.setShowExportDialog(true) },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = AccentCyan
+                            containerColor = GoldChampagne
                         ),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.padding(end = 8.dp)
@@ -296,7 +320,9 @@ fun EditorScreen(
                     videoPickerLauncher.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                     )
-                }
+                },
+                audioTracks = uiState.project.audioTracks,
+                textOverlays = uiState.project.textOverlays
             )
 
             // Bottom Editing Toolbar

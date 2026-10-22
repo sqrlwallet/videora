@@ -24,9 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevan.videorabykevan.model.VideoClip
-import com.kevan.videorabykevan.ui.theme.AccentCyan
 import com.kevan.videorabykevan.ui.theme.DarkCard
 import com.kevan.videorabykevan.ui.theme.DarkSurface
+import com.kevan.videorabykevan.ui.theme.GoldChampagne
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,12 +36,14 @@ fun SpeedSheet(
     onSelectSpeed: (Float) -> Unit
 ) {
     val speedOptions = listOf(
-        0.5f to "0.5x Slow-mo",
-        0.75f to "0.75x Relaxed",
-        1.0f to "1.0x Normal",
-        1.25f to "1.25x Dynamic",
-        1.5f to "1.5x Brisk",
-        2.0f to "2.0x Timelapse"
+        0.25f to "0.25x Super Slo-Mo",
+        0.5f to "0.5x Slow-Motion",
+        0.75f to "0.75x Cinematic Chill",
+        1.0f to "1.0x Normal Speed",
+        1.25f to "1.25x Dynamic Flow",
+        1.5f to "1.5x Brisk Pace",
+        2.0f to "2.0x Fast Forward",
+        3.0f to "3.0x Hyperlapse"
     )
 
     ModalBottomSheet(
@@ -54,10 +56,10 @@ fun SpeedSheet(
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             Text(
-                text = "Clip Playback Speed",
+                text = "⚡ Clip Speed & Ramping",
                 color = Color.White,
                 fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Black
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -69,31 +71,31 @@ fun SpeedSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) AccentCyan.copy(alpha = 0.15f) else DarkCard)
+                            .background(if (isSelected) GoldChampagne.copy(alpha = 0.15f) else DarkCard)
                             .border(
                                 width = if (isSelected) 1.5.dp else 1.dp,
-                                color = if (isSelected) AccentCyan else Color.White.copy(alpha = 0.1f),
+                                color = if (isSelected) GoldChampagne else Color.White.copy(alpha = 0.08f),
                                 shape = RoundedCornerShape(12.dp)
                             )
                             .clickable {
                                 onSelectSpeed(factor)
                                 onDismiss()
                             }
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = label,
-                            color = if (isSelected) AccentCyan else Color.White,
+                            color = if (isSelected) GoldChampagne else Color.White,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            fontSize = 15.sp
+                            fontSize = 14.sp
                         )
 
                         if (isSelected) {
                             Text(
                                 text = "ACTIVE",
-                                color = AccentCyan,
+                                color = GoldChampagne,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )

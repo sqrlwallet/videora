@@ -80,18 +80,20 @@ fun VideoraApp() {
                 }
             )
         } else {
+            // Scoped specifically to this active project
+            val editorViewModel: EditorViewModel = viewModel(key = projectId)
+
             BackHandler {
+                editorViewModel.pause()
                 activeProjectId = null
                 homeViewModel.loadProjects()
             }
-
-            // Scoped specifically to this active project
-            val editorViewModel: EditorViewModel = viewModel(key = projectId)
 
             EditorScreen(
                 projectId = projectId,
                 viewModel = editorViewModel,
                 onNavigateBack = {
+                    editorViewModel.pause()
                     activeProjectId = null
                     homeViewModel.loadProjects()
                 }

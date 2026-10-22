@@ -56,6 +56,9 @@ import com.kevan.videorabykevan.ui.theme.AccentCyan
 import com.kevan.videorabykevan.ui.theme.AccentPink
 import com.kevan.videorabykevan.ui.theme.DarkBackground
 import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
+import com.kevan.videorabykevan.ui.theme.GoldChampagne
+import com.kevan.videorabykevan.ui.theme.GoldRimGradient
+import com.kevan.videorabykevan.ui.theme.LuxuryGoldGradient
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -87,7 +90,7 @@ fun VideoPlayerView(
             modifier = Modifier
                 .aspectRatio(aspectRatioPreset.aspectRatio)
                 .clip(RoundedCornerShape(16.dp))
-                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                .border(1.5.dp, GoldRimGradient, RoundedCornerShape(16.dp))
                 .background(Color.Black)
         ) {
             if (hasClips) {
@@ -154,16 +157,16 @@ fun VideoPlayerView(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(56.dp)
-                                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                                .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape),
+                                .size(60.dp)
+                                .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                                .border(2.dp, GoldRimGradient, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Default.PlayArrow,
                                 contentDescription = "Play",
-                                tint = Color.White,
-                                modifier = Modifier.size(32.dp)
+                                tint = GoldChampagne,
+                                modifier = Modifier.size(34.dp)
                             )
                         }
                     }
@@ -210,7 +213,7 @@ fun VideoPlayerView(
 
                     Button(
                         onClick = onAddClipClicked,
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                        colors = ButtonDefaults.buttonColors(containerColor = GoldChampagne),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))

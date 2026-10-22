@@ -11,7 +11,8 @@ data class AudioTrack(
     val trimStartMs: Long = 0L,
     val trimEndMs: Long = durationMs,
     val volume: Float = 0.8f,
-    val isLooping: Boolean = false
+    val isLooping: Boolean = false,
+    val isVoiceover: Boolean = false
 ) {
     val effectiveDurationMs: Long
         get() = (trimEndMs - trimStartMs).coerceAtLeast(0L)

@@ -53,6 +53,48 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun createDemoProject(
+        context: android.content.Context,
+        onCreated: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            try {
+                val clipFile = com.kevan.videorabykevan.data.SampleMediaHelper.generateSampleVideoClip(
+                    context = context,
+                    clipTitle = "Viral Demo Scene",
+                    durationSeconds = 5
+                )
+                val clip = com.kevan.videorabykevan.model.VideoClip(
+                    uri = android.net.Uri.fromFile(clipFile).toString(),
+                    name = "Starter Clip (5s)",
+                    durationMs = 5000L,
+                    trimEndMs = 5000L
+                )
+                val starterOverlay = com.kevan.videorabykevan.model.TextOverlay(
+                    text = "🔥 STOP SCROLLING!",
+                    startTimeMs = 0L,
+                    endTimeMs = 3000L,
+                    fontSizeSp = 28f,
+                    style = com.kevan.videorabykevan.model.TextStylePreset.VIRAL_HOOK
+                )
+                val demoProject = Project(
+                    title = "Demo Viral Short",
+                    aspectRatio = AspectRatioPreset.TIKTOK_REELS_SHORTS_9_16,
+                    safeZone = SafeZoneType.TIKTOK,
+                    clips = listOf(clip),
+                    textOverlays = listOf(starterOverlay)
+                )
+                repository.saveProject(demoProject)
+                loadProjects()
+                onCreated(demoProject.id)
+            } catch (_: Exception) {
+                // Fallback to empty project
+                createNewProject("Demo Short", AspectRatioPreset.TIKTOK_REELS_SHORTS_9_16, onCreated)
+            }
+        }
+    }
+
     fun duplicateProject(id: String) {
         viewModelScope.launch {
             repository.duplicateProject(id)

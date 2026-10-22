@@ -33,10 +33,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kevan.videorabykevan.ui.theme.AccentCyan
-import com.kevan.videorabykevan.ui.theme.AccentPink
 import com.kevan.videorabykevan.ui.theme.DarkCard
 import com.kevan.videorabykevan.ui.theme.DarkSurface
+import com.kevan.videorabykevan.ui.theme.EmeraldAccent
+import com.kevan.videorabykevan.ui.theme.GoldChampagne
+import com.kevan.videorabykevan.ui.theme.LuxuryGoldGradient
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,7 +60,7 @@ fun OpenSourceSheet(onDismiss: () -> Unit) {
 
             Text(
                 text = "Videora by Kevan • Privacy-First Creator Studio",
-                color = AccentCyan,
+                color = GoldChampagne,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 2.dp, bottom = 16.dp)
@@ -96,7 +97,7 @@ fun OpenSourceSheet(onDismiss: () -> Unit) {
             Button(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                colors = ButtonDefaults.buttonColors(containerColor = GoldChampagne),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text("Got It", color = Color.Black, fontWeight = FontWeight.Bold)
@@ -124,10 +125,10 @@ private fun PillarItem(
         Box(
             modifier = Modifier
                 .size(34.dp)
-                .background(AccentCyan.copy(alpha = 0.15f), CircleShape),
+                .background(GoldChampagne.copy(alpha = 0.15f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
+            Icon(icon, contentDescription = null, tint = GoldChampagne, modifier = Modifier.size(18.dp))
         }
 
         Spacer(modifier = Modifier.width(12.dp))

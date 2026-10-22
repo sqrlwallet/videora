@@ -48,11 +48,13 @@ import androidx.compose.ui.window.DialogProperties
 import com.kevan.videorabykevan.engine.ExportProgressState
 import com.kevan.videorabykevan.engine.VideoExportManager
 import com.kevan.videorabykevan.model.ExportPreset
-import com.kevan.videorabykevan.ui.theme.AccentCyan
-import com.kevan.videorabykevan.ui.theme.AccentPink
 import com.kevan.videorabykevan.ui.theme.DarkCard
 import com.kevan.videorabykevan.ui.theme.DarkSurface
 import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
+import com.kevan.videorabykevan.ui.theme.EmeraldAccent
+import com.kevan.videorabykevan.ui.theme.GoldChampagne
+import com.kevan.videorabykevan.ui.theme.GoldRimGradient
+import com.kevan.videorabykevan.ui.theme.LuxuryGoldGradient
 
 @Composable
 fun ExportDialog(
@@ -74,9 +76,11 @@ fun ExportDialog(
         )
     ) {
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(22.dp),
             color = DarkSurface,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.5.dp, GoldRimGradient, RoundedCornerShape(22.dp))
         ) {
             Column(
                 modifier = Modifier
@@ -120,7 +124,7 @@ fun ExportDialog(
                                     .fillMaxWidth()
                                     .height(8.dp)
                                     .clip(RoundedCornerShape(4.dp)),
-                                color = AccentCyan,
+                                color = GoldChampagne,
                                 trackColor = DarkSurfaceVariant
                             )
 
@@ -193,7 +197,7 @@ fun ExportDialog(
                                     context.startActivity(android.content.Intent.createChooser(shareIntent, "Share to TikTok / Reels / Shorts"))
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                                colors = ButtonDefaults.buttonColors(containerColor = GoldChampagne),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
@@ -246,7 +250,7 @@ fun ExportDialog(
 
                             Button(
                                 onClick = { onStartExport(selectedPreset) },
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                                colors = ButtonDefaults.buttonColors(containerColor = GoldChampagne),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text("Retry Export", color = Color.Black, fontWeight = FontWeight.Bold)
@@ -271,10 +275,10 @@ fun ExportDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isSelected) AccentCyan.copy(alpha = 0.15f) else DarkCard)
+                                        .background(if (isSelected) GoldChampagne.copy(alpha = 0.15f) else DarkCard)
                                         .border(
                                             width = if (isSelected) 1.5.dp else 1.dp,
-                                            color = if (isSelected) AccentCyan else Color.White.copy(alpha = 0.1f),
+                                            color = if (isSelected) GoldChampagne else Color.White.copy(alpha = 0.1f),
                                             shape = RoundedCornerShape(12.dp)
                                         )
                                         .clickable { selectedPreset = preset }
@@ -285,7 +289,7 @@ fun ExportDialog(
                                     Column {
                                         Text(
                                             text = preset.title,
-                                            color = if (isSelected) AccentCyan else Color.White,
+                                            color = if (isSelected) GoldChampagne else Color.White,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 14.sp
                                         )
@@ -300,7 +304,7 @@ fun ExportDialog(
                                     Box(
                                         modifier = Modifier
                                             .background(
-                                                if (isSelected) AccentCyan else DarkSurfaceVariant,
+                                                if (isSelected) GoldChampagne else DarkSurfaceVariant,
                                                 RoundedCornerShape(6.dp)
                                             )
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -321,12 +325,12 @@ fun ExportDialog(
                         Button(
                             onClick = { onStartExport(selectedPreset) },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                            colors = ButtonDefaults.buttonColors(containerColor = GoldChampagne),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Icon(Icons.Default.Videocam, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Export Now (100% Local)", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Export Now (100% Local)", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 14.sp)
                         }
                     }
                 }

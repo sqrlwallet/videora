@@ -1,6 +1,7 @@
 package com.kevan.videorabykevan.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevan.videorabykevan.ui.theme.AccentCyan
@@ -191,18 +193,24 @@ private fun ActionButton(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    val alpha = if (enabled) 1f else 0.4f
+    val alpha = if (enabled) 1f else 0.35f
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .size(38.dp)
-                .background(DarkSurfaceVariant.copy(alpha = alpha), RoundedCornerShape(10.dp)),
+                .size(42.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(DarkSurfaceVariant.copy(alpha = alpha))
+                .border(
+                    1.dp,
+                    if (accentColor != Color.White) accentColor.copy(alpha = 0.3f * alpha) else Color.White.copy(alpha = 0.1f * alpha),
+                    RoundedCornerShape(12.dp)
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -216,7 +224,8 @@ private fun ActionButton(
         Text(
             text = label,
             color = Color.White.copy(alpha = alpha),
-            fontSize = 10.sp
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
