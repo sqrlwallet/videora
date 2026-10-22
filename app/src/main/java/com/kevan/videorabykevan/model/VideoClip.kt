@@ -13,7 +13,8 @@ data class VideoClip(
     val volume: Float = 1.0f,
     val isMuted: Boolean = false,
     val filter: VideoFilter = VideoFilter.NONE,
-    val rotationDegrees: Int = 0
+    val rotationDegrees: Int = 0,
+    val isFlippedHorizontal: Boolean = false
 ) {
     /**
      * The trimmed source length in milliseconds before speed adjustment.

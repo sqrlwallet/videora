@@ -1,6 +1,7 @@
 package com.kevan.videorabykevan
 
 import com.google.gson.Gson
+import com.kevan.videorabykevan.data.BuiltInAudioHelper
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.AudioTrack
 import com.kevan.videorabykevan.model.ExportPreset
@@ -63,6 +64,17 @@ class VideoraUnitTest {
     }
 
     @Test
+    fun testVideoClipFlipAndRotation() {
+        val clip = VideoClip(
+            uri = "file:///selfie.mp4",
+            isFlippedHorizontal = true,
+            rotationDegrees = 90
+        )
+        assertTrue(clip.isFlippedHorizontal)
+        assertEquals(90, clip.rotationDegrees)
+    }
+
+    @Test
     fun testProjectDurationCalculation() {
         val clip1 = VideoClip(
             uri = "file:///clip1.mp4",
@@ -90,20 +102,31 @@ class VideoraUnitTest {
     }
 
     @Test
-    fun testTextOverlayStylePresets() {
+    fun testTextOverlayStylePresetsAndStickers() {
         val viralHook = TextStylePreset.VIRAL_HOOK
         assertEquals(0xFFFFDE03, viralHook.defaultTextColorHex)
         assertEquals(0xEE121212, viralHook.defaultBackgroundColorHex)
 
-        val overlay = TextOverlay(
-            text = "Hook Title",
-            style = viralHook,
-            startTimeMs = 0L,
-            endTimeMs = 3000L
+        val sticker = TextOverlay(
+            text = "🔥",
+            style = TextStylePreset.STICKER_EMOJI,
+            isSticker = true
         )
-        assertEquals("Hook Title", overlay.text)
-        assertEquals(0L, overlay.startTimeMs)
-        assertEquals(3000L, overlay.endTimeMs)
+        assertTrue(sticker.isSticker)
+        assertEquals("🔥", sticker.text)
+
+        assertTrue(TextOverlay.VIRAL_HOOK_TEMPLATES.isNotEmpty())
+        assertTrue(TextOverlay.TRENDING_STICKERS.contains("🔥"))
+    }
+
+    @Test
+    fun testBuiltInAudioEffectsList() {
+        val effects = BuiltInAudioHelper.availableEffects
+        assertTrue(effects.size >= 6)
+        assertTrue(effects.any { it.id == "whoosh" })
+        assertTrue(effects.any { it.id == "pop" })
+        assertTrue(effects.any { it.id == "bell" })
+        assertTrue(effects.any { it.id == "bass_boom" })
     }
 
     @Test
@@ -150,7 +173,7 @@ class VideoraUnitTest {
             aspectRatio = AspectRatioPreset.TIKTOK_REELS_SHORTS_9_16,
             safeZone = SafeZoneType.TIKTOK,
             clips = listOf(
-                VideoClip(uri = "file:///1.mp4", durationMs = 3000L, trimEndMs = 3000L)
+                VideoClip(uri = "file:///1.mp4", durationMs = 3000L, trimEndMs = 3000L, isFlippedHorizontal = true)
             ),
             textOverlays = listOf(
                 TextOverlay(text = "Hello World", startTimeMs = 500L, endTimeMs = 2500L)
@@ -165,6 +188,7 @@ class VideoraUnitTest {
         assertEquals(project.id, deserialized.id)
         assertEquals(project.title, deserialized.title)
         assertEquals(1, deserialized.clips.size)
+        assertTrue(deserialized.clips.first().isFlippedHorizontal)
         assertEquals(1, deserialized.textOverlays.size)
         assertEquals("Hello World", deserialized.textOverlays.first().text)
     }

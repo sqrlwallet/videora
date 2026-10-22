@@ -18,23 +18,34 @@ Never let critical text hooks, face details, or stickers get blocked by platform
 - **Clean View**: One-tap toggle for an unobstructed canvas.
 
 ### ⏱️ 2. Multi-Clip Timeline & Precision Editing
+- **Undo / Redo History**: Multi-level state history (↶ / ↷) to revert or reapply any trimming, splitting, speed, or filtering changes.
+- **Clip Reordering**: Move clips backward or forward along the timeline with one tap (`Move ◀` / `Move ▶`).
+- **Mirror & Rotate**: Horizontal selfie-camera flip and 90° incremental rotations.
 - **Modern Media Picker**: Import multiple videos and photos from device gallery via Android PhotoPicker (no runtime storage permission required).
 - **Accurate Trimming**: Millisecond-precision start and end trim sliders with live visual feedback.
 - **Split at Playhead**: Instantly split any video clip at the current playhead cursor with a single tap.
 - **Speed Control**: `0.5x` (Smooth Slow-Motion), `0.75x`, `1.0x` (Normal), `1.25x`, `1.5x`, `2.0x` (Timelapse).
-- **Clip Duplication & Deletion**: Reorder and manage timeline clips effortlessly.
 - **Audio Mute**: Mute original video audio to replace with background music or voiceovers.
 
-### 🪝 3. Viral Text Hooks & Dynamic Captions
-- **TikTok Yellow Hook Pill**: High-contrast black pill with vibrant yellow bold text — the quintessential viral short-form hook format.
-- **Modern White Pill**: Translucent dark pill with crisp white typography.
-- **Neon Glow & Cyber**: Electric cyan and magenta glowing text.
-- **Meme Impact**: Bold white typography for high-impact punchlines.
-- **Position Placement**: One-tap Top Hook (upper third), Center Title, or Lower Subtitle.
-- **Draggable Canvas**: Drag and reposition text overlays anywhere on screen.
-- **Timing Sliders**: Set exact start and end timestamps for each caption.
+### 🎙️ 3. Built-in Sound Effects & Voiceover Studio
+- **Voiceover Studio**: Record live microphone audio commentary synced directly to the video playhead with timer and pulsing indicator.
+- **Built-in Sound Effects**: On-device synthesized soundboard (100% offline, zero network requests):
+  - 💨 **Fast Whoosh**: Scene transition sweep
+  - 🫧 **Bubble Pop**: UI tap & element pop
+  - 🔔 **Bell Ding**: Highlight point chime
+  - 💥 **Dramatic Bass Boom**: Sub-bass impact
+  - 🪙 **Success Ding**: Gamified coin sound
+  - 📸 **Camera Snap**: Flash snapshot click
+- **Device Music**: Add local `.mp3`, `.wav`, or `.m4a` music tracks with independent volume sliders.
 
-### 🎨 4. Hardware-Accelerated Color Grading & Filters
+### 🪝 4. Viral Text Hooks, Templates & Emoji Stickers
+- **Viral Hook Templates**: One-tap hook titles (*"POV: Nobody is talking about this 🤫"*, *"Wait until the end... 😱"*, *"Stop scrolling right now! 🛑"*, *"3 secrets you didn't know 💡"*).
+- **Reaction Stickers & Emojis**: Tap to place trending reaction stickers (🔥, 💀, 😱, 🚀, 💯, ⚡, 🎯, 👍, 🛑, 🤫, etc.) directly on the video canvas.
+- **TikTok Yellow Hook Pill**: High-contrast black pill with vibrant yellow bold text — the quintessential viral short-form hook format.
+- **Modern White Pill, Neon Glow & Meme Impact**: Diverse creator typography presets.
+- **Draggable Canvas & Timing**: Drag overlays anywhere on screen and configure start/end timestamps.
+
+### 🎨 5. Hardware-Accelerated Color Grading & Filters
 Real-time GPU shader matrices:
 - **Vibrant Pop**: High-saturation contrast pop calibrated for vibrant OLED phone displays.
 - **Golden Sunset**: Warm lifestyle/vlog golden hour lighting.
@@ -42,11 +53,6 @@ Real-time GPU shader matrices:
 - **Retro Film**: Nostalgic sepia warmth.
 - **Cyberpunk**: Dramatic neon color shifts.
 - **Noir B&W**: Classic high-contrast black-and-white.
-
-### 🎵 5. Audio & Background Music Mixing
-- Add local audio tracks (`.mp3`, `.wav`, `.m4a`, `.ogg`) from device storage.
-- Independent volume control (0% to 150%).
-- One-tap toggle to mute original video background noise.
 
 ### ⚡ 6. Hardware Export Engine (AndroidX Media3 Transformer)
 - Fast hardware-accelerated H.264 / AAC encoding.
@@ -73,13 +79,15 @@ com.kevan.videorabykevan/
 ├── model/                     # Pure data classes & presets
 │   ├── AspectRatioPreset.kt   # 9:16, 1:1, 4:5, 16:9
 │   ├── SafeZoneType.kt        # TikTok, Reels, Shorts UI guides
-│   ├── VideoClip.kt           # Timeline clip model (trim, speed, volume)
-│   ├── AudioTrack.kt          # Background soundtrack model
-│   ├── TextOverlay.kt         # Viral hook text & styling presets
+│   ├── VideoClip.kt           # Timeline clip model (trim, speed, flip, rotate)
+│   ├── AudioTrack.kt          # Background soundtrack & voiceover model
+│   ├── TextOverlay.kt         # Viral hook text, templates & stickers
 │   ├── VideoFilter.kt         # Color matrices & contrast presets
 │   ├── ExportPreset.kt        # Hardware transcode profiles
 │   └── Project.kt             # Project draft entity
 ├── data/
+│   ├── BuiltInAudioHelper.kt  # On-device synthesized sound effects (Whoosh, Pop, Bell, etc.)
+│   ├── VoiceRecorderHelper.kt # Local microphone voiceover recorder
 │   ├── ProjectRepository.kt   # Local JSON persistence (100% offline)
 │   └── SampleMediaHelper.kt   # Hardware MediaCodec on-device video generator
 ├── engine/                    # Video decoding, playback & export pipeline
@@ -90,47 +98,34 @@ com.kevan.videorabykevan/
 │   ├── components/            # Reusable UI components
 │   │   ├── VideoPlayerView.kt # 9:16 surface with overlays & transport
 │   │   ├── SafeZoneOverlay.kt # Platform UI bounds simulation
-│   │   ├── TextOverlayCanvas.kt # Draggable text hook layer
+│   │   ├── TextOverlayCanvas.kt # Draggable text hook & sticker layer
 │   │   ├── TimelineView.kt    # Multi-clip timeline with real-time playhead
-│   │   ├── ClipActionRow.kt   # Fast action buttons
+│   │   ├── ClipActionRow.kt   # Fast action buttons (Trim, Speed, Reorder, Mirror, etc.)
 │   │   ├── TrimSheet.kt       # Millisecond start/end trimmer
 │   │   ├── SpeedSheet.kt      # Slo-mo / speedup presets
 │   │   ├── FilterSheet.kt     # Color grading presets
-│   │   ├── TextEditorSheet.kt # Hook editor & typography
-│   │   ├── AudioSheet.kt      # Soundtrack & volume mixing
+│   │   ├── TextEditorSheet.kt # Hook editor, templates & typography
+│   │   ├── StickerSheet.kt    # Reaction stickers & emojis
+│   │   ├── VoiceoverSheet.kt  # Live voiceover recording studio
+│   │   ├── AudioSheet.kt      # SFX soundboard, music & volume mixing
 │   │   ├── ExportDialog.kt    # Encoding progress & social share sheet
 │   │   └── OpenSourceSheet.kt # Transparency & manifesto dialog
 │   ├── screens/
 │   │   ├── HomeScreen.kt      # Drafts manager & platform tips
-│   │   └── EditorScreen.kt    # Full editing studio
+│   │   └── EditorScreen.kt    # Full editing studio with Undo/Redo
 │   └── viewmodel/
 │       ├── HomeViewModel.kt
 │       └── EditorViewModel.kt
 └── MainActivity.kt            # Compose entry point & smooth back-stack
 ```
 
-### Libraries Used:
-- **Jetpack Compose + Material 3**: Modern, declarative UI with OLED dark theme.
-- **AndroidX Media3 (1.5.1)**:
-  - `media3-exoplayer`: High-performance playback, playlist clipping, and seeking.
-  - `media3-transformer`: Hardware-accelerated GPU export pipeline.
-  - `media3-effect`: Scaling, cropping, and RGB color matrices.
-- **Gson**: Lightweight local JSON serialization.
-- **Coil**: Image and thumbnail rendering.
-
 ---
 
 ## 🚀 Building & Running
 
-### Prerequisites
-- Android Studio Ladybug / Meerkat / 2024.2+
-- Android SDK 30+ (Compile SDK: 37)
-- JDK 17+ (or bundled JetBrains Runtime)
-
-### Command Line Build
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/videora.git
+git clone https://github.com/sqrlwallet/videora.git
 cd videora
 
 # Build debug APK
@@ -139,12 +134,9 @@ cd videora
 # Run unit tests
 ./gradlew testDebugUnitTest
 
-# Install to connected device or emulator
-./gradlew installDebug
+# Build signed release APK
+./gradlew assembleRelease
 ```
-
-The compiled APK will be located at:
-`app/build/outputs/apk/debug/app-debug.apk`
 
 ---
 

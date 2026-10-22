@@ -21,11 +21,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -48,14 +47,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevan.videorabykevan.model.AspectRatioPreset
-import com.kevan.videorabykevan.model.SafeZoneType
 import com.kevan.videorabykevan.ui.components.AudioSheet
 import com.kevan.videorabykevan.ui.components.ClipActionRow
 import com.kevan.videorabykevan.ui.components.ExportDialog
@@ -63,15 +60,15 @@ import com.kevan.videorabykevan.ui.components.FilterSheet
 import com.kevan.videorabykevan.ui.components.OpenSourceSheet
 import com.kevan.videorabykevan.ui.components.SafeZoneSheet
 import com.kevan.videorabykevan.ui.components.SpeedSheet
+import com.kevan.videorabykevan.ui.components.StickerSheet
 import com.kevan.videorabykevan.ui.components.TextEditorSheet
 import com.kevan.videorabykevan.ui.components.TimelineView
 import com.kevan.videorabykevan.ui.components.TrimSheet
 import com.kevan.videorabykevan.ui.components.VideoPlayerView
+import com.kevan.videorabykevan.ui.components.VoiceoverSheet
 import com.kevan.videorabykevan.ui.theme.AccentCyan
-import com.kevan.videorabykevan.ui.theme.AccentPink
 import com.kevan.videorabykevan.ui.theme.DarkBackground
 import com.kevan.videorabykevan.ui.theme.DarkCard
-import com.kevan.videorabykevan.ui.theme.DarkSurface
 import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
 import com.kevan.videorabykevan.ui.viewmodel.EditorViewModel
 
@@ -177,8 +174,8 @@ fun EditorScreen(
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(DarkSurfaceVariant)
                                 .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                            .clickable { viewModel.setShowSafeZoneSheet(true) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                .clickable { viewModel.setShowSafeZoneSheet(true) }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(Icons.Default.ViewInAr, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(14.dp))
@@ -202,6 +199,36 @@ fun EditorScreen(
                     }
                 },
                 actions = {
+                    // Undo
+                    IconButton(
+                        onClick = { viewModel.undo() },
+                        enabled = uiState.canUndo,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = "Undo",
+                            tint = if (uiState.canUndo) AccentCyan else Color.White.copy(alpha = 0.3f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // Redo
+                    IconButton(
+                        onClick = { viewModel.redo() },
+                        enabled = uiState.canRedo,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Redo,
+                            contentDescription = "Redo",
+                            tint = if (uiState.canRedo) AccentCyan else Color.White.copy(alpha = 0.3f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
                     // Export Button
                     Button(
                         onClick = { viewModel.setShowExportDialog(true) },
@@ -280,8 +307,14 @@ fun EditorScreen(
                 onOpenSpeed = { viewModel.setShowSpeedSheet(true) },
                 onOpenFilters = { viewModel.setShowFilterSheet(true) },
                 onOpenText = { viewModel.setShowTextEditorSheet(true) },
+                onOpenStickers = { viewModel.setShowStickerSheet(true) },
                 onOpenAudio = { viewModel.setShowAudioSheet(true) },
+                onOpenVoiceover = { viewModel.setShowVoiceoverSheet(true) },
                 onOpenSafeZones = { viewModel.setShowSafeZoneSheet(true) },
+                onMoveClipLeft = { viewModel.moveClipLeft(uiState.selectedClipIndex) },
+                onMoveClipRight = { viewModel.moveClipRight(uiState.selectedClipIndex) },
+                onToggleFlip = { viewModel.toggleClipFlip(uiState.selectedClipIndex) },
+                onRotate90 = { viewModel.rotateClip90(uiState.selectedClipIndex) },
                 onToggleMute = { viewModel.toggleSelectedClipMute() },
                 onDuplicateClip = { viewModel.duplicateSelectedClip() },
                 onDeleteClip = { viewModel.deleteSelectedClip() }
@@ -323,15 +356,34 @@ fun EditorScreen(
             )
         }
 
+        if (uiState.showStickerSheet) {
+            StickerSheet(
+                totalDurationMs = playerState.totalDurationMs,
+                currentPositionMs = playerState.currentPositionMs,
+                onDismiss = { viewModel.setShowStickerSheet(false) },
+                onAddSticker = { viewModel.addOrUpdateTextOverlay(it) }
+            )
+        }
+
         if (uiState.showAudioSheet) {
             AudioSheet(
                 activeAudioTrack = uiState.project.audioTracks.firstOrNull(),
                 allClipsMuted = uiState.project.clips.isNotEmpty() && uiState.project.clips.all { it.isMuted },
                 onDismiss = { viewModel.setShowAudioSheet(false) },
                 onPickAudioFile = { audioPickerLauncher.launch("audio/*") },
+                onOpenVoiceover = { viewModel.setShowVoiceoverSheet(true) },
+                onAddSoundEffect = { viewModel.addBuiltInSoundEffect(it, context) },
                 onUpdateAudioVolume = { viewModel.updateAudioVolume(it) },
                 onToggleMuteOriginalAudio = { viewModel.toggleMuteAllClips() },
                 onRemoveAudioTrack = { viewModel.removeAudioTrack() }
+            )
+        }
+
+        if (uiState.showVoiceoverSheet) {
+            VoiceoverSheet(
+                currentTimelinePositionMs = playerState.currentPositionMs,
+                onDismiss = { viewModel.setShowVoiceoverSheet(false) },
+                onAddVoiceoverTrack = { viewModel.addVoiceoverTrack(it) }
             )
         }
 

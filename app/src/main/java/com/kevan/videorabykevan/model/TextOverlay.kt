@@ -43,6 +43,12 @@ enum class TextStylePreset(
         defaultTextColorHex = 0xFFFF2A85,
         defaultBackgroundColorHex = 0xEE18181B,
         defaultFontSizeSp = 22f
+    ),
+    STICKER_EMOJI(
+        title = "Reaction Sticker",
+        defaultTextColorHex = 0xFFFFFFFF,
+        defaultBackgroundColorHex = 0x00000000,
+        defaultFontSizeSp = 48f
     )
 }
 
@@ -56,5 +62,24 @@ data class TextOverlay(
     val posX: Float = 0.5f, // Normalized 0..1 (center)
     val posY: Float = 0.3f, // Normalized 0..1 (upper-third ideal hook position)
     val startTimeMs: Long = 0L,
-    val endTimeMs: Long = 5000L
-)
+    val endTimeMs: Long = 5000L,
+    val isSticker: Boolean = false
+) {
+    companion object {
+        val VIRAL_HOOK_TEMPLATES = listOf(
+            "POV: Nobody is talking about this 🤫",
+            "Wait until the end... 😱",
+            "Stop scrolling right now! 🛑",
+            "3 secrets you didn't know 💡",
+            "How I did this in 24 hours ⚡",
+            "Save this for later! 📌",
+            "Part 1: The Untold Story 🔥"
+        )
+
+        val TRENDING_STICKERS = listOf(
+            "🔥", "💀", "😱", "🚀", "💯", "⚡", "🎯", "👍",
+            "🛑", "🤫", "🚨", "✨", "🧠", "🎬", "👀", "📈",
+            "❤️", "🙌", "😂", "🤯", "💥", "👑", "🍕", "🎵"
+        )
+    }
+}

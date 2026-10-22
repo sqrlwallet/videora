@@ -12,16 +12,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AddReaction
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TextFields
@@ -49,8 +54,14 @@ fun ClipActionRow(
     onOpenSpeed: () -> Unit,
     onOpenFilters: () -> Unit,
     onOpenText: () -> Unit,
+    onOpenStickers: () -> Unit,
     onOpenAudio: () -> Unit,
+    onOpenVoiceover: () -> Unit,
     onOpenSafeZones: () -> Unit,
+    onMoveClipLeft: () -> Unit,
+    onMoveClipRight: () -> Unit,
+    onToggleFlip: () -> Unit,
+    onRotate90: () -> Unit,
     onToggleMute: () -> Unit,
     onDuplicateClip: () -> Unit,
     onDeleteClip: () -> Unit,
@@ -62,7 +73,7 @@ fun ClipActionRow(
             .background(DarkSurface)
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         ActionButton(
@@ -70,6 +81,13 @@ fun ClipActionRow(
             label = "Text/Hook",
             accentColor = AccentCyan,
             onClick = onOpenText
+        )
+
+        ActionButton(
+            icon = Icons.Default.AddReaction,
+            label = "Stickers",
+            accentColor = Color(0xFFFFDE03),
+            onClick = onOpenStickers
         )
 
         ActionButton(
@@ -95,9 +113,44 @@ fun ClipActionRow(
         )
 
         ActionButton(
+            icon = Icons.Default.Mic,
+            label = "Voiceover",
+            accentColor = AccentPink,
+            onClick = onOpenVoiceover
+        )
+
+        ActionButton(
             icon = Icons.Default.MusicNote,
-            label = "Music",
+            label = "Audio/SFX",
             onClick = onOpenAudio
+        )
+
+        ActionButton(
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            label = "Move ◀",
+            enabled = hasSelectedClip,
+            onClick = onMoveClipLeft
+        )
+
+        ActionButton(
+            icon = Icons.AutoMirrored.Filled.ArrowForward,
+            label = "Move ▶",
+            enabled = hasSelectedClip,
+            onClick = onMoveClipRight
+        )
+
+        ActionButton(
+            icon = Icons.Default.Flip,
+            label = "Mirror",
+            enabled = hasSelectedClip,
+            onClick = onToggleFlip
+        )
+
+        ActionButton(
+            icon = Icons.AutoMirrored.Filled.RotateRight,
+            label = "Rotate",
+            enabled = hasSelectedClip,
+            onClick = onRotate90
         )
 
         ActionButton(
@@ -143,7 +196,7 @@ private fun ActionButton(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 6.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
@@ -163,7 +216,7 @@ private fun ActionButton(
         Text(
             text = label,
             color = Color.White.copy(alpha = alpha),
-            fontSize = 11.sp
+            fontSize = 10.sp
         )
     }
 }

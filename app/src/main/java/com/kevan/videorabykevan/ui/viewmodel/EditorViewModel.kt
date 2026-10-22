@@ -6,8 +6,10 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kevan.videorabykevan.data.BuiltInAudioHelper
 import com.kevan.videorabykevan.data.ProjectRepository
 import com.kevan.videorabykevan.data.SampleMediaHelper
+import com.kevan.videorabykevan.data.SoundEffectItem
 import com.kevan.videorabykevan.engine.ExportProgressState
 import com.kevan.videorabykevan.engine.PlayerState
 import com.kevan.videorabykevan.engine.VideoExportManager
@@ -22,19 +24,18 @@ import com.kevan.videorabykevan.model.VideoClip
 import com.kevan.videorabykevan.model.VideoFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 data class EditorUiState(
     val project: Project = Project(),
     val selectedClipIndex: Int = 0,
     val selectedOverlayId: String? = null,
     val isLoading: Boolean = false,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
     val showTrimSheet: Boolean = false,
     val showSpeedSheet: Boolean = false,
     val showFilterSheet: Boolean = false,
@@ -42,7 +43,9 @@ data class EditorUiState(
     val showAudioSheet: Boolean = false,
     val showSafeZoneSheet: Boolean = false,
     val showExportDialog: Boolean = false,
-    val showOpenSourceSheet: Boolean = false
+    val showOpenSourceSheet: Boolean = false,
+    val showVoiceoverSheet: Boolean = false,
+    val showStickerSheet: Boolean = false
 )
 
 class EditorViewModel(application: Application) : AndroidViewModel(application) {
@@ -57,17 +60,68 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private val _uiState = MutableStateFlow(EditorUiState())
     val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
 
+    private val undoStack = mutableListOf<Project>()
+    private val redoStack = mutableListOf<Project>()
+
     fun loadProject(projectId: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             val project = repository.getProject(projectId) ?: Project(id = projectId)
+            undoStack.clear()
+            redoStack.clear()
             _uiState.value = _uiState.value.copy(
                 project = project,
                 selectedClipIndex = 0,
+                canUndo = false,
+                canRedo = false,
                 isLoading = false
             )
             playerManager.setClips(project.clips, keepPosition = false)
         }
+    }
+
+    private fun pushUndoState(current: Project) {
+        undoStack.add(current)
+        if (undoStack.size > 25) {
+            undoStack.removeAt(0)
+        }
+        redoStack.clear()
+        updateUndoRedoAvailability()
+    }
+
+    fun undo() {
+        if (undoStack.isNotEmpty()) {
+            val prev = undoStack.removeAt(undoStack.lastIndex)
+            redoStack.add(_uiState.value.project)
+            _uiState.value = _uiState.value.copy(
+                project = prev,
+                selectedClipIndex = _uiState.value.selectedClipIndex.coerceIn(0, (prev.clips.size - 1).coerceAtLeast(0))
+            )
+            updateUndoRedoAvailability()
+            playerManager.setClips(prev.clips)
+            persistProject()
+        }
+    }
+
+    fun redo() {
+        if (redoStack.isNotEmpty()) {
+            val next = redoStack.removeAt(redoStack.lastIndex)
+            undoStack.add(_uiState.value.project)
+            _uiState.value = _uiState.value.copy(
+                project = next,
+                selectedClipIndex = _uiState.value.selectedClipIndex.coerceIn(0, (next.clips.size - 1).coerceAtLeast(0))
+            )
+            updateUndoRedoAvailability()
+            playerManager.setClips(next.clips)
+            persistProject()
+        }
+    }
+
+    private fun updateUndoRedoAvailability() {
+        _uiState.value = _uiState.value.copy(
+            canUndo = undoStack.isNotEmpty(),
+            canRedo = redoStack.isNotEmpty()
+        )
     }
 
     private fun persistProject() {
@@ -109,6 +163,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
 
+            pushUndoState(_uiState.value.project)
             val updatedClips = _uiState.value.project.clips + newClips
             val updatedProject = _uiState.value.project.copy(clips = updatedClips)
             _uiState.value = _uiState.value.copy(
@@ -138,6 +193,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 trimEndMs = 4000L
             )
 
+            pushUndoState(_uiState.value.project)
             val updatedClips = _uiState.value.project.clips + newClip
             val updatedProject = _uiState.value.project.copy(clips = updatedClips)
             _uiState.value = _uiState.value.copy(
@@ -163,10 +219,60 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun moveClipLeft(index: Int) {
+        val clips = _uiState.value.project.clips.toMutableList()
+        if (index > 0 && index < clips.size) {
+            pushUndoState(_uiState.value.project)
+            val item = clips.removeAt(index)
+            clips.add(index - 1, item)
+            val updated = _uiState.value.project.copy(clips = clips)
+            _uiState.value = _uiState.value.copy(project = updated, selectedClipIndex = index - 1)
+            playerManager.setClips(clips)
+            persistProject()
+        }
+    }
+
+    fun moveClipRight(index: Int) {
+        val clips = _uiState.value.project.clips.toMutableList()
+        if (index >= 0 && index < clips.lastIndex) {
+            pushUndoState(_uiState.value.project)
+            val item = clips.removeAt(index)
+            clips.add(index + 1, item)
+            val updated = _uiState.value.project.copy(clips = clips)
+            _uiState.value = _uiState.value.copy(project = updated, selectedClipIndex = index + 1)
+            playerManager.setClips(clips)
+            persistProject()
+        }
+    }
+
+    fun toggleClipFlip(index: Int) {
+        val clips = _uiState.value.project.clips.toMutableList()
+        if (index in clips.indices) {
+            pushUndoState(_uiState.value.project)
+            clips[index] = clips[index].copy(isFlippedHorizontal = !clips[index].isFlippedHorizontal)
+            val updated = _uiState.value.project.copy(clips = clips)
+            _uiState.value = _uiState.value.copy(project = updated)
+            persistProject()
+        }
+    }
+
+    fun rotateClip90(index: Int) {
+        val clips = _uiState.value.project.clips.toMutableList()
+        if (index in clips.indices) {
+            pushUndoState(_uiState.value.project)
+            val nextDeg = (clips[index].rotationDegrees + 90) % 360
+            clips[index] = clips[index].copy(rotationDegrees = nextDeg)
+            val updated = _uiState.value.project.copy(clips = clips)
+            _uiState.value = _uiState.value.copy(project = updated)
+            persistProject()
+        }
+    }
+
     fun trimSelectedClip(startMs: Long, endMs: Long) {
         val index = _uiState.value.selectedClipIndex
         val clips = _uiState.value.project.clips.toMutableList()
         if (index in clips.indices) {
+            pushUndoState(_uiState.value.project)
             val clip = clips[index]
             clips[index] = clip.copy(trimStartMs = startMs, trimEndMs = endMs)
             val updatedProject = _uiState.value.project.copy(clips = clips)
@@ -202,8 +308,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             val splitOffsetInSource = (offsetWithinPlayback * targetClip.speed).toLong()
             val absoluteSplitMs = targetClip.trimStartMs + splitOffsetInSource
 
-            // Ensure split doesn't create zero-duration clips
             if (absoluteSplitMs > targetClip.trimStartMs + 300L && absoluteSplitMs < targetClip.trimEndMs - 300L) {
+                pushUndoState(_uiState.value.project)
+
                 val clipPart1 = targetClip.copy(
                     id = java.util.UUID.randomUUID().toString(),
                     name = "${targetClip.name} (Part 1)",
@@ -234,6 +341,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val index = _uiState.value.selectedClipIndex
         val clips = _uiState.value.project.clips.toMutableList()
         if (index in clips.indices) {
+            pushUndoState(_uiState.value.project)
             clips[index] = clips[index].copy(speed = speed)
             val updatedProject = _uiState.value.project.copy(clips = clips)
             _uiState.value = _uiState.value.copy(project = updatedProject)
@@ -246,6 +354,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val index = _uiState.value.selectedClipIndex
         val clips = _uiState.value.project.clips.toMutableList()
         if (index in clips.indices) {
+            pushUndoState(_uiState.value.project)
             clips[index] = clips[index].copy(filter = filter)
             val updatedProject = _uiState.value.project.copy(clips = clips)
             _uiState.value = _uiState.value.copy(project = updatedProject)
@@ -257,6 +366,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val index = _uiState.value.selectedClipIndex
         val clips = _uiState.value.project.clips.toMutableList()
         if (index in clips.indices) {
+            pushUndoState(_uiState.value.project)
             val clip = clips[index]
             clips[index] = clip.copy(isMuted = !clip.isMuted)
             val updatedProject = _uiState.value.project.copy(clips = clips)
@@ -270,6 +380,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val index = _uiState.value.selectedClipIndex
         val clips = _uiState.value.project.clips.toMutableList()
         if (index in clips.indices) {
+            pushUndoState(_uiState.value.project)
             val original = clips[index]
             val copy = original.copy(
                 id = java.util.UUID.randomUUID().toString(),
@@ -290,6 +401,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val index = _uiState.value.selectedClipIndex
         val clips = _uiState.value.project.clips.toMutableList()
         if (index in clips.indices) {
+            pushUndoState(_uiState.value.project)
             clips.removeAt(index)
             val newIndex = (index - 1).coerceAtLeast(0)
             val updatedProject = _uiState.value.project.copy(clips = clips)
@@ -304,6 +416,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     // Aspect Ratio & Safe Zone
     fun setAspectRatio(preset: AspectRatioPreset) {
+        pushUndoState(_uiState.value.project)
         val updatedProject = _uiState.value.project.copy(aspectRatio = preset)
         _uiState.value = _uiState.value.copy(project = updatedProject)
         persistProject()
@@ -315,8 +428,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         persistProject()
     }
 
-    // Text Overlays
+    // Text Overlays & Stickers
     fun addOrUpdateTextOverlay(overlay: TextOverlay) {
+        pushUndoState(_uiState.value.project)
         val list = _uiState.value.project.textOverlays.toMutableList()
         val index = list.indexOfFirst { it.id == overlay.id }
         if (index >= 0) {
@@ -333,6 +447,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun deleteTextOverlay(id: String) {
+        pushUndoState(_uiState.value.project)
         val list = _uiState.value.project.textOverlays.toMutableList()
         list.removeAll { it.id == id }
         val updatedProject = _uiState.value.project.copy(textOverlays = list)
@@ -358,8 +473,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.value = _uiState.value.copy(selectedOverlayId = id)
     }
 
-    // Audio Track
+    // Audio Track, SFX, Voiceovers
     fun setAudioTrack(uri: Uri, title: String) {
+        pushUndoState(_uiState.value.project)
         val audioTrack = AudioTrack(
             uri = uri.toString(),
             title = title,
@@ -367,6 +483,32 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         )
         val updatedProject = _uiState.value.project.copy(audioTracks = listOf(audioTrack))
         _uiState.value = _uiState.value.copy(project = updatedProject)
+        persistProject()
+    }
+
+    fun addBuiltInSoundEffect(effect: SoundEffectItem, context: Context) {
+        viewModelScope.launch {
+            val file = BuiltInAudioHelper.getOrCreateSoundEffectFile(context, effect.id)
+            val currentPos = playerState.value.currentPositionMs
+            val audioTrack = AudioTrack(
+                uri = Uri.fromFile(file).toString(),
+                title = "${effect.iconEmoji} ${effect.name}",
+                timelineStartOffsetMs = currentPos,
+                volume = 0.9f
+            )
+            pushUndoState(_uiState.value.project)
+            val list = _uiState.value.project.audioTracks + audioTrack
+            val updated = _uiState.value.project.copy(audioTracks = list)
+            _uiState.value = _uiState.value.copy(project = updated)
+            persistProject()
+        }
+    }
+
+    fun addVoiceoverTrack(track: AudioTrack) {
+        pushUndoState(_uiState.value.project)
+        val list = _uiState.value.project.audioTracks + track
+        val updated = _uiState.value.project.copy(audioTracks = list)
+        _uiState.value = _uiState.value.copy(project = updated)
         persistProject()
     }
 
@@ -378,12 +520,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun removeAudioTrack() {
+        pushUndoState(_uiState.value.project)
         val updatedProject = _uiState.value.project.copy(audioTracks = emptyList())
         _uiState.value = _uiState.value.copy(project = updatedProject)
         persistProject()
     }
 
     fun toggleMuteAllClips() {
+        pushUndoState(_uiState.value.project)
         val currentAllMuted = _uiState.value.project.clips.all { it.isMuted }
         val clips = _uiState.value.project.clips.map { it.copy(isMuted = !currentAllMuted) }
         val updatedProject = _uiState.value.project.copy(clips = clips)
@@ -415,6 +559,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun setShowSafeZoneSheet(show: Boolean) = _uiState.update { it.copy(showSafeZoneSheet = show) }
     fun setShowExportDialog(show: Boolean) = _uiState.update { it.copy(showExportDialog = show) }
     fun setShowOpenSourceSheet(show: Boolean) = _uiState.update { it.copy(showOpenSourceSheet = show) }
+    fun setShowVoiceoverSheet(show: Boolean) = _uiState.update { it.copy(showVoiceoverSheet = show) }
+    fun setShowStickerSheet(show: Boolean) = _uiState.update { it.copy(showStickerSheet = show) }
 
     private inline fun MutableStateFlow<EditorUiState>.update(function: (EditorUiState) -> EditorUiState) {
         value = function(value)

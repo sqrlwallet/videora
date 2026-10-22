@@ -15,6 +15,7 @@ import androidx.media3.effect.Contrast
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.RgbAdjustment
 import androidx.media3.effect.RgbFilter
+import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
@@ -163,6 +164,16 @@ class VideoExportManager(
             .build()
 
         val effectsList = mutableListOf<Effect>()
+
+        // Handle rotation and horizontal flip
+        if (clip.rotationDegrees != 0 || clip.isFlippedHorizontal) {
+            effectsList.add(
+                ScaleAndRotateTransformation.Builder()
+                    .setRotationDegrees(clip.rotationDegrees.toFloat())
+                    .setScale(if (clip.isFlippedHorizontal) -1f else 1f, 1f)
+                    .build()
+            )
+        }
 
         // Force output dimensions and portrait scale
         effectsList.add(

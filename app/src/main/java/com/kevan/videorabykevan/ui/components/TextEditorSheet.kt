@@ -79,7 +79,27 @@ fun TextEditorSheet(
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Quick Viral Hook Templates
+            Text("Viral Hook Ideas", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(TextOverlay.VIRAL_HOOK_TEMPLATES) { template ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkCard)
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .clickable { textContent = template }
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(template, color = Color.White, fontSize = 11.sp)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Text input
             OutlinedTextField(
