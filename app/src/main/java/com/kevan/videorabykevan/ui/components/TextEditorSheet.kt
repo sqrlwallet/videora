@@ -11,9 +11,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,12 +47,14 @@ import com.kevan.videorabykevan.ui.theme.AccentCyan
 import com.kevan.videorabykevan.ui.theme.DarkCard
 import com.kevan.videorabykevan.ui.theme.DarkSurface
 import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TextEditorSheet(
     existingOverlay: TextOverlay?,
     totalDurationMs: Long,
+    currentPositionMs: Long = 0L,
     onDismiss: () -> Unit,
     onSaveOverlay: (TextOverlay) -> Unit,
     onDeleteOverlay: ((String) -> Unit)? = null
@@ -60,8 +66,13 @@ fun TextEditorSheet(
     var posX by remember { mutableFloatStateOf(existingOverlay?.posX ?: 0.5f) }
 
     val maxSec = (totalDurationMs / 1000f).coerceAtLeast(5f)
-    var startSec by remember { mutableFloatStateOf((existingOverlay?.startTimeMs ?: 0L) / 1000f) }
-    var endSec by remember { mutableFloatStateOf((existingOverlay?.endTimeMs ?: 4000L) / 1000f) }
+    var textColorHex by remember { mutableStateOf(existingOverlay?.textColorHex ?: selectedPreset.defaultTextColorHex) }
+
+    // New text starts at the playhead (where the user is looking) and shows for 3 seconds
+    val newStartMs = currentPositionMs.coerceIn(0L, (totalDurationMs - 500L).coerceAtLeast(0L))
+    val newEndMs = (newStartMs + 3000L).coerceAtMost(totalDurationMs.coerceAtLeast(newStartMs + 500L))
+    var startSec by remember { mutableFloatStateOf((existingOverlay?.startTimeMs ?: newStartMs) / 1000f) }
+    var endSec by remember { mutableFloatStateOf((existingOverlay?.endTimeMs ?: newEndMs) / 1000f) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -70,6 +81,7 @@ fun TextEditorSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Text(
@@ -140,6 +152,7 @@ fun TextEditorSheet(
                             .clickable {
                                 selectedPreset = preset
                                 fontSize = preset.defaultFontSizeSp
+                                textColorHex = preset.defaultTextColorHex
                             }
                             .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
@@ -154,6 +167,43 @@ fun TextEditorSheet(
             }
 
             Spacer(modifier = Modifier.height(14.dp))
+
+            // Text color
+            Text("Text Color", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                (listOf(selectedPreset.defaultTextColorHex) + TEXT_COLOR_SWATCHES).distinct().forEach { hex ->
+                    val isSelected = hex == textColorHex
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(hex))
+                            .border(
+                                width = if (isSelected) 3.dp else 1.dp,
+                                color = if (isSelected) AccentCyan else Color.White.copy(alpha = 0.3f),
+                                shape = CircleShape
+                            )
+                            .clickable { textColorHex = hex }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Text size
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Size", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                Text("${fontSize.roundToInt()}", color = AccentCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = fontSize,
+                onValueChange = { fontSize = it },
+                valueRange = 12f..72f,
+                colors = SliderDefaults.colors(thumbColor = AccentCyan, activeTrackColor = AccentCyan)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Quick Position Placement
             Text("Position Placement", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
@@ -241,7 +291,7 @@ fun TextEditorSheet(
                             text = textContent.trim(),
                             style = selectedPreset,
                             fontSizeSp = fontSize,
-                            textColorHex = selectedPreset.defaultTextColorHex,
+                            textColorHex = textColorHex,
                             backgroundColorHex = selectedPreset.defaultBackgroundColorHex,
                             posX = posX,
                             posY = posY,
@@ -294,3 +344,7 @@ private fun PositionPill(
         )
     }
 }
+
+private val TEXT_COLOR_SWATCHES = listOf(
+    0xFFFFFFFF, 0xFF000000, 0xFFFFDE03, 0xFF00F2FE, 0xFFFF2A85, 0xFFFF453A, 0xFF34C759
+)

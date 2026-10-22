@@ -59,8 +59,8 @@ data class TextOverlay(
     val fontSizeSp: Float = style.defaultFontSizeSp,
     val textColorHex: Long = style.defaultTextColorHex,
     val backgroundColorHex: Long = style.defaultBackgroundColorHex,
-    val posX: Float = 0.5f, // Normalized 0..1 (center)
-    val posY: Float = 0.3f, // Normalized 0..1 (upper-third ideal hook position)
+    val posX: Float = 0.5f, // Normalized 0..1, horizontal center of the overlay
+    val posY: Float = 0.3f, // Normalized 0..1, vertical center (upper third = ideal hook position)
     val startTimeMs: Long = 0L,
     val endTimeMs: Long = 5000L,
     val isSticker: Boolean = false

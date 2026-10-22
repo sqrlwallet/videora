@@ -1,6 +1,9 @@
 package com.kevan.videorabykevan.ui.components
 
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.view.LayoutInflater
+import android.view.TextureView
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -54,8 +57,12 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.kevan.videorabykevan.R
+import kotlin.math.max
+import kotlin.math.min
+import com.kevan.videorabykevan.engine.ClipColorMatrix
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.SafeZoneType
+import com.kevan.videorabykevan.model.VideoClip
 import com.kevan.videorabykevan.model.TextOverlay
 import com.kevan.videorabykevan.ui.theme.AccentCyan
 import com.kevan.videorabykevan.ui.theme.AccentPink
@@ -71,20 +78,25 @@ fun VideoPlayerView(
     aspectRatioPreset: AspectRatioPreset,
     safeZoneType: SafeZoneType,
     textOverlays: List<TextOverlay>,
+    activeClip: VideoClip?,
+    showOriginalColors: Boolean = false,
     currentPositionMs: Long,
     isPlaying: Boolean,
     isBuffering: Boolean,
     hasClips: Boolean,
     selectedOverlayId: String?,
+    isFitMode: Boolean,
+    onToggleFitMode: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onSelectOverlay: (String?) -> Unit,
+    onEditOverlay: () -> Unit,
     onUpdateOverlayPosition: (String, Float, Float) -> Unit,
     onAddClipClicked: () -> Unit,
     onGenerateDemoClipClicked: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Allows toggling between TikTok/Reels full-bleed crop (Fill) and letterboxed view (Fit)
-    var isFillMode by remember { mutableStateOf(true) }
+    // Toggles between TikTok/Reels full-bleed crop (Fill) and letterboxed view (Fit); saved on the project and used by export
+    val isFillMode = !isFitMode
 
     Box(
         modifier = modifier
@@ -110,6 +122,10 @@ fun VideoPlayerView(
                         view.player = exoPlayer
                         view.resizeMode = if (isFillMode) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
                         view.setOnClickListener { onTogglePlayPause() }
+                        // Re-apply the clip look whenever the video frame is re-laid out (new clip size, Fit/Fill)
+                        view.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+                            (v.getTag(R.id.media3_player_view) as? PreviewLook)?.let { applyPreviewLook(v as PlayerView, it) }
+                        }
                         view
                     },
                     update = { view ->
@@ -120,6 +136,9 @@ fun VideoPlayerView(
                         if (view.resizeMode != targetResizeMode) {
                             view.resizeMode = targetResizeMode
                         }
+                        val look = PreviewLook(activeClip, isFillMode, showOriginalColors)
+                        view.setTag(R.id.media3_player_view, look)
+                        applyPreviewLook(view, look)
                     },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -130,6 +149,7 @@ fun VideoPlayerView(
                     currentPositionMs = currentPositionMs,
                     selectedOverlayId = selectedOverlayId,
                     onSelectOverlay = onSelectOverlay,
+                    onEditOverlay = onEditOverlay,
                     onUpdatePosition = onUpdateOverlayPosition,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -148,7 +168,7 @@ fun VideoPlayerView(
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.Black.copy(alpha = 0.65f))
                         .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
-                        .clickable { isFillMode = !isFillMode }
+                        .clickable { onToggleFitMode() }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Row(
@@ -273,4 +293,36 @@ fun VideoPlayerView(
             }
         }
     }
+}
+
+/** What the preview needs to mimic the export for the clip under the playhead. */
+private data class PreviewLook(val clip: VideoClip?, val isFillMode: Boolean, val showOriginalColors: Boolean)
+
+/**
+ * Shows the active clip's filter, color adjustments, mirror and rotation in the live preview using
+ * cheap view-level transforms on the TextureView, so the user sees what the export will produce.
+ */
+@OptIn(UnstableApi::class)
+private fun applyPreviewLook(playerView: PlayerView, look: PreviewLook) {
+    val textureView = playerView.videoSurfaceView as? TextureView ?: return
+    val clip = look.clip
+
+    // "Compare" shows the clip without filter and color correction
+    val colorMatrix = clip?.let { ClipColorMatrix.colorMatrixFor(it, includeColor = !look.showOriginalColors) }
+    textureView.setLayerPaint(colorMatrix?.let { Paint().apply { colorFilter = ColorMatrixColorFilter(it) } })
+
+    val degrees = ((clip?.rotationDegrees ?: 0) % 360 + 360) % 360
+    val w = textureView.width.toFloat()
+    val h = textureView.height.toFloat()
+    val cw = playerView.width.toFloat()
+    val ch = playerView.height.toFloat()
+    // A quarter turn swaps the frame's width and height; rescale so it still fits / fills the viewport
+    val scale = if ((degrees == 90 || degrees == 270) && w > 0f && h > 0f && cw > 0f && ch > 0f) {
+        if (look.isFillMode) max(cw / h, ch / w) else min(cw / h, ch / w)
+    } else {
+        1f
+    }
+    textureView.rotation = degrees.toFloat()
+    textureView.scaleX = scale * if (clip?.isFlippedHorizontal == true) -1f else 1f
+    textureView.scaleY = scale
 }

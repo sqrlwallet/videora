@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
@@ -34,14 +35,18 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -56,11 +61,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.decode.VideoFrameDecoder
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.Project
 import com.kevan.videorabykevan.ui.components.OpenSourceSheet
@@ -93,6 +104,8 @@ fun HomeScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     var showOpenSourceInfo by remember { mutableStateOf(false) }
+    var projectPendingDelete by remember { mutableStateOf<Project?>(null) }
+    var projectBeingRenamed by remember { mutableStateOf<Project?>(null) }
 
     Scaffold(
         containerColor = DarkBackground,
@@ -314,8 +327,9 @@ fun HomeScreen(
                         ProjectItemCard(
                             project = project,
                             onClick = { onOpenProject(project.id) },
+                            onRename = { projectBeingRenamed = project },
                             onDuplicate = { viewModel.duplicateProject(project.id) },
-                            onDelete = { viewModel.deleteProject(project.id) }
+                            onDelete = { projectPendingDelete = project }
                         )
                     }
                 }
@@ -328,6 +342,73 @@ fun HomeScreen(
 
         if (showOpenSourceInfo) {
             OpenSourceSheet(onDismiss = { showOpenSourceInfo = false })
+        }
+
+        // Deleting removes the project's clips and recordings too, so always confirm
+        projectPendingDelete?.let { project ->
+            AlertDialog(
+                onDismissRequest = { projectPendingDelete = null },
+                containerColor = DarkCard,
+                title = { Text("Delete \"${project.title}\"?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        "This removes the project and its imported clips and voiceovers from the app. " +
+                            "Videos you already exported to your gallery are kept.",
+                        color = TextSecondary
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.deleteProject(project.id)
+                        projectPendingDelete = null
+                    }) {
+                        Text("Delete", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { projectPendingDelete = null }) {
+                        Text("Cancel", color = TextSecondary)
+                    }
+                }
+            )
+        }
+
+        projectBeingRenamed?.let { project ->
+            var title by remember(project.id) { mutableStateOf(project.title) }
+            AlertDialog(
+                onDismissRequest = { projectBeingRenamed = null },
+                containerColor = DarkCard,
+                title = { Text("Rename project", color = TextPrimary, fontWeight = FontWeight.Bold) },
+                text = {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = GoldChampagne,
+                            cursorColor = GoldChampagne
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = title.isNotBlank(),
+                        onClick = {
+                            viewModel.renameProject(project.id, title)
+                            projectBeingRenamed = null
+                        }
+                    ) {
+                        Text("Save", color = GoldChampagne, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { projectBeingRenamed = null }) {
+                        Text("Cancel", color = TextSecondary)
+                    }
+                }
+            )
         }
     }
 }
@@ -634,6 +715,7 @@ private fun ToolkitItem(
 private fun ProjectItemCard(
     project: Project,
     onClick: () -> Unit,
+    onRename: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -652,7 +734,9 @@ private fun ProjectItemCard(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            // Filmstrip-styled left indicator
+            // Thumbnail of the first clip, with the aspect ratio and clip count on top
+            val firstClip = project.clips.firstOrNull()
+            val context = LocalContext.current
             Box(
                 modifier = Modifier
                     .size(width = 46.dp, height = 58.dp)
@@ -661,6 +745,20 @@ private fun ProjectItemCard(
                     .border(1.dp, GoldRimGradient, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center
             ) {
+                if (firstClip != null) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(firstClip.uri)
+                            .decoderFactory(VideoFrameDecoder.Factory())
+                            .videoFrameMillis(firstClip.trimStartMs)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+                }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = project.aspectRatio.label,
@@ -684,7 +782,8 @@ private fun ProjectItemCard(
                     color = TextPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -728,6 +827,21 @@ private fun ProjectItemCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            IconButton(
+                onClick = onRename,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(DarkSurfaceVariant)
+            ) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = "Rename",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
             IconButton(
                 onClick = onDuplicate,
                 modifier = Modifier

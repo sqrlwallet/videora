@@ -7,7 +7,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -19,12 +18,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.kevan.videorabykevan.engine.OverlayMetrics
 import com.kevan.videorabykevan.model.TextOverlay
 import com.kevan.videorabykevan.model.TextStylePreset
 import com.kevan.videorabykevan.ui.theme.AccentCyan
@@ -36,6 +36,7 @@ fun TextOverlayCanvas(
     currentPositionMs: Long,
     selectedOverlayId: String?,
     onSelectOverlay: (String?) -> Unit,
+    onEditOverlay: () -> Unit,
     onUpdatePosition: (id: String, newX: Float, newY: Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -49,10 +50,12 @@ fun TextOverlayCanvas(
             if (isActive) {
                 DraggableTextItem(
                     overlay = overlay,
+                    pxPerUnit = OverlayMetrics.pxPerUnit(canvasWidthPx, canvasHeightPx),
                     canvasWidthPx = canvasWidthPx,
                     canvasHeightPx = canvasHeightPx,
                     isSelected = overlay.id == selectedOverlayId,
                     onSelect = { onSelectOverlay(overlay.id) },
+                    onEdit = onEditOverlay,
                     onPositionChanged = { newX, newY ->
                         onUpdatePosition(overlay.id, newX, newY)
                     }
@@ -65,43 +68,53 @@ fun TextOverlayCanvas(
 @Composable
 private fun DraggableTextItem(
     overlay: TextOverlay,
+    pxPerUnit: Float,
     canvasWidthPx: Float,
     canvasHeightPx: Float,
     isSelected: Boolean,
     onSelect: () -> Unit,
+    onEdit: () -> Unit,
     onPositionChanged: (Float, Float) -> Unit
 ) {
-    var offsetX by remember(overlay.posX) { mutableFloatStateOf(overlay.posX * canvasWidthPx) }
-    var offsetY by remember(overlay.posY) { mutableFloatStateOf(overlay.posY * canvasHeightPx) }
+    // posX / posY are the overlay's center, so presets like "Center Title" are truly centered
+    var centerX by remember(overlay.posX, canvasWidthPx) { mutableFloatStateOf(overlay.posX * canvasWidthPx) }
+    var centerY by remember(overlay.posY, canvasHeightPx) { mutableFloatStateOf(overlay.posY * canvasHeightPx) }
 
     val textColor = Color(overlay.textColorHex)
     val bgColor = Color(overlay.backgroundColorHex)
 
-    val shape = when (overlay.style) {
-        TextStylePreset.VIRAL_HOOK, TextStylePreset.BOLD_WHITE_PILL -> RoundedCornerShape(12.dp)
-        TextStylePreset.CLEAN_SUBTITLE -> RoundedCornerShape(6.dp)
-        TextStylePreset.MINIMAL_ACCENT -> RoundedCornerShape(8.dp)
-        else -> RoundedCornerShape(4.dp)
-    }
+    // Sized relative to the canvas (not device dp/sp) so the preview matches the exported video
+    val density = LocalDensity.current
+    val shape = RoundedCornerShape(with(density) { (OverlayMetrics.cornerRadius(overlay.style) * pxPerUnit).toDp() })
+    val padH = with(density) { (OverlayMetrics.PADDING_HORIZONTAL * pxPerUnit).toDp() }
+    val padV = with(density) { (OverlayMetrics.PADDING_VERTICAL * pxPerUnit).toDp() }
+    val fontSize = with(density) { (overlay.fontSizeSp * pxPerUnit).toSp() }
 
     Box(
         modifier = Modifier
-            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) {
+                    placeable.place(
+                        (centerX - placeable.width / 2f).roundToInt(),
+                        (centerY - placeable.height / 2f).roundToInt()
+                    )
+                }
+            }
             .pointerInput(overlay.id) {
                 detectDragGestures(
                     onDragStart = { onSelect() },
                     onDragEnd = {
-                        val normX = (offsetX / canvasWidthPx).coerceIn(0.05f, 0.95f)
-                        val normY = (offsetY / canvasHeightPx).coerceIn(0.05f, 0.95f)
-                        onPositionChanged(normX, normY)
+                        onPositionChanged(centerX / canvasWidthPx, centerY / canvasHeightPx)
                     }
                 ) { change, dragAmount ->
                     change.consume()
-                    offsetX = (offsetX + dragAmount.x).coerceIn(0f, canvasWidthPx - 100f)
-                    offsetY = (offsetY + dragAmount.y).coerceIn(0f, canvasHeightPx - 50f)
+                    centerX = (centerX + dragAmount.x).coerceIn(canvasWidthPx * 0.02f, canvasWidthPx * 0.98f)
+                    centerY = (centerY + dragAmount.y).coerceIn(canvasHeightPx * 0.02f, canvasHeightPx * 0.98f)
                 }
             }
-            .clickable { onSelect() }
+            // First tap selects, a second tap on the selected overlay opens the editor
+            .clickable { if (isSelected) onEdit() else onSelect() }
             .then(
                 if (isSelected) {
                     Modifier.border(2.dp, AccentCyan, shape)
@@ -110,18 +123,13 @@ private fun DraggableTextItem(
                 }
             )
             .background(bgColor, shape)
-            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .padding(horizontal = padH, vertical = padV)
     ) {
         Text(
             text = overlay.text,
             color = textColor,
-            fontSize = overlay.fontSizeSp.sp,
-            fontWeight = when (overlay.style) {
-                TextStylePreset.VIRAL_HOOK, TextStylePreset.MEME_IMPACT -> FontWeight.Black
-                TextStylePreset.BOLD_WHITE_PILL -> FontWeight.Bold
-                TextStylePreset.MINIMAL_ACCENT -> FontWeight.Medium
-                else -> FontWeight.SemiBold
-            },
+            fontSize = fontSize,
+            fontWeight = FontWeight(OverlayMetrics.fontWeight(overlay.style)),
             fontFamily = when (overlay.style) {
                 TextStylePreset.MEME_IMPACT -> FontFamily.SansSerif
                 else -> FontFamily.Default

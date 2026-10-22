@@ -12,6 +12,8 @@ data class Project(
     val clips: List<VideoClip> = emptyList(),
     val audioTracks: List<AudioTrack> = emptyList(),
     val textOverlays: List<TextOverlay> = emptyList(),
+    // false = Fill (crop to frame), true = Fit (letterbox). Defaults to Fill so older saved projects keep their look.
+    val isFitMode: Boolean = false,
     val thumbnailUri: String? = null
 ) {
     val totalDurationMs: Long

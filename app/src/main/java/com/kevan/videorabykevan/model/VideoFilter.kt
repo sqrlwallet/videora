@@ -58,6 +58,6 @@ enum class VideoFilter(
         redScale = 0.9f,
         greenScale = 0.9f,
         blueScale = 0.9f,
-        contrast = 0.2f
+        contrast = 0.15f
     )
 }

@@ -11,12 +11,19 @@ import androidx.core.content.FileProvider
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
-import androidx.media3.effect.Contrast
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.ChannelMixingAudioProcessor
+import androidx.media3.common.audio.ChannelMixingMatrix
+import androidx.media3.common.audio.SonicAudioProcessor
+import androidx.media3.effect.FrameDropEffect
+import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.Presentation
-import androidx.media3.effect.RgbAdjustment
-import androidx.media3.effect.RgbFilter
 import androidx.media3.effect.ScaleAndRotateTransformation
+import androidx.media3.effect.SpeedChangeEffect
+import androidx.media3.effect.TextureOverlay
+import androidx.media3.transformer.AudioEncoderSettings
 import androidx.media3.transformer.Composition
+import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Effects
@@ -24,10 +31,12 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.VideoEncoderSettings
+import com.google.common.collect.ImmutableList
+import com.kevan.videorabykevan.model.AudioTrack
 import com.kevan.videorabykevan.model.ExportPreset
 import com.kevan.videorabykevan.model.Project
 import com.kevan.videorabykevan.model.VideoClip
-import com.kevan.videorabykevan.model.VideoFilter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -70,6 +79,8 @@ class VideoExportManager(
         }
 
         val outputDir = File(context.cacheDir, "exports").apply { mkdirs() }
+        // Earlier exports were already copied to the gallery (or failed); don't let them pile up
+        outputDir.listFiles()?.forEach { it.delete() }
         val fileName = "videora_${System.currentTimeMillis()}_${preset.badge.lowercase()}.mp4"
         val tempOutputFile = File(outputDir, fileName)
 
@@ -86,11 +97,15 @@ class VideoExportManager(
                 progressPollingJob?.cancel()
                 coroutineScope.launch(Dispatchers.IO) {
                     val publicUri = saveToGallery(tempOutputFile, fileName)
+                    // Once the gallery has its copy, the cache file is redundant; keep it only as the share fallback
+                    if (publicUri != null) {
+                        tempOutputFile.delete()
+                    }
                     _exportState.value = ExportProgressState(
                         isExporting = false,
                         progress = 1.0f,
                         statusText = "Export Complete!",
-                        exportedFile = tempOutputFile,
+                        exportedFile = tempOutputFile.takeIf { publicUri == null },
                         mediaStoreUri = publicUri,
                         isSuccess = true
                     )
@@ -110,7 +125,19 @@ class VideoExportManager(
             }
         }
 
+        // Bitrates from the preset; fallback lets devices that can't hit them pick the closest supported value
+        val encoderFactory = DefaultEncoderFactory.Builder(context)
+            .setRequestedVideoEncoderSettings(
+                VideoEncoderSettings.Builder().setBitrate(preset.videoBitrateBps).build()
+            )
+            .setRequestedAudioEncoderSettings(
+                AudioEncoderSettings.Builder().setBitrate(preset.audioBitrateBps).build()
+            )
+            .setEnableFallback(true)
+            .build()
+
         val transformer = Transformer.Builder(context)
+            .setEncoderFactory(encoderFactory)
             .setVideoMimeType(MimeTypes.VIDEO_H264)
             .setAudioMimeType(MimeTypes.AUDIO_AAC)
             .addListener(listener)
@@ -119,12 +146,7 @@ class VideoExportManager(
         activeTransformer = transformer
 
         try {
-            val editedClips = project.clips.map { clip ->
-                buildEditedMediaItem(clip, preset)
-            }
-
-            val sequence = EditedMediaItemSequence.Builder(editedClips).build()
-            val composition = Composition.Builder(listOf(sequence)).build()
+            val composition = buildComposition(project, preset)
 
             transformer.start(composition, tempOutputFile.absolutePath)
 
@@ -152,7 +174,86 @@ class VideoExportManager(
         }
     }
 
-    private fun buildEditedMediaItem(clip: VideoClip, preset: ExportPreset): EditedMediaItem {
+    private fun buildComposition(project: Project, preset: ExportPreset): Composition {
+        val (frameWidth, frameHeight) = preset.outputSizeFor(project.aspectRatio)
+
+        val videoSequence = EditedMediaItemSequence.Builder(
+            project.clips.map { buildEditedMediaItem(it, frameWidth, frameHeight, project.isFitMode) }
+        ).build()
+
+        // Each music / voiceover / SFX track becomes its own audio-only sequence that the mixer
+        // blends with the clips' original audio.
+        val audioSequences = project.audioTracks.mapNotNull {
+            buildAudioSequence(it, project.totalDurationMs)
+        }
+
+        val compositionVideoEffects = mutableListOf<Effect>()
+        // Overlays use the output timeline (after speed changes), matching the preview playhead
+        if (project.textOverlays.isNotEmpty()) {
+            compositionVideoEffects.add(
+                OverlayEffect(
+                    ImmutableList.of<TextureOverlay>(TextOverlayBitmapOverlay(project.textOverlays, frameWidth, frameHeight))
+                )
+            )
+        }
+        // Caps the output at the preset's frame rate (sped-up clips would otherwise exceed it)
+        compositionVideoEffects.add(FrameDropEffect.createDefaultFrameDropEffect(preset.targetFps.toFloat()))
+
+        return Composition.Builder(listOf(videoSequence) + audioSequences)
+            .setEffects(Effects(emptyList(), compositionVideoEffects))
+            // Generates silence for clips without audio (muted clips, demo clips) so the
+            // video sequence always has an audio track to mix into
+            .experimentalSetForceAudioTrack(true)
+            .build()
+    }
+
+    private fun buildAudioSequence(track: AudioTrack, projectDurationMs: Long): EditedMediaItemSequence? {
+        val startOffsetMs = track.timelineStartOffsetMs.coerceAtLeast(0L)
+        val availableMs = projectDurationMs - startOffsetMs
+        if (availableMs <= 0L || track.volume <= 0f) return null
+
+        val trimStartMs = track.trimStartMs.coerceAtLeast(0L)
+        val knownLengthMs = track.effectiveDurationMs.takeIf { track.trimEndMs > trimStartMs }
+
+        val items = mutableListOf<EditedMediaItem>()
+        var remainingMs = availableMs
+        do {
+            // Unknown source length: play once from the trim start, cut off at the end of the video
+            val segmentMs = knownLengthMs?.let { minOf(it, remainingMs) } ?: remainingMs
+            items += buildAudioItem(track, trimStartMs, trimStartMs + segmentMs)
+            remainingMs -= segmentMs
+        } while (track.isLooping && knownLengthMs != null && remainingMs > 0L)
+
+        val builder = EditedMediaItemSequence.Builder()
+        if (startOffsetMs > 0L) {
+            builder.addGap(startOffsetMs * 1000)
+        }
+        return builder.addItems(items).build()
+    }
+
+    private fun buildAudioItem(track: AudioTrack, startMs: Long, endMs: Long): EditedMediaItem {
+        val mediaItem = MediaItem.Builder()
+            .setUri(Uri.parse(track.uri))
+            .setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(startMs)
+                    .setEndPositionMs(endMs)
+                    .build()
+            )
+            .build()
+
+        return EditedMediaItem.Builder(mediaItem)
+            .setRemoveVideo(true)
+            .setEffects(Effects(listOfNotNull(volumeProcessor(track.volume)), emptyList()))
+            .build()
+    }
+
+    private fun buildEditedMediaItem(
+        clip: VideoClip,
+        frameWidth: Int,
+        frameHeight: Int,
+        isFitMode: Boolean
+    ): EditedMediaItem {
         val clippingConfig = MediaItem.ClippingConfiguration.Builder()
             .setStartPositionMs(clip.trimStartMs)
             .setEndPositionMs(if (clip.trimEndMs > 0) clip.trimEndMs else clip.durationMs)
@@ -164,89 +265,59 @@ class VideoExportManager(
             .build()
 
         val effectsList = mutableListOf<Effect>()
+        val audioProcessors = mutableListOf<AudioProcessor>()
+
+        // Speed: retime video frames and time-stretch audio without changing pitch (same as preview)
+        if (clip.speed > 0.05f && clip.speed != 1.0f) {
+            effectsList.add(SpeedChangeEffect(clip.speed))
+            audioProcessors.add(SonicAudioProcessor().apply {
+                setSpeed(clip.speed)
+                setPitch(1.0f)
+            })
+        }
+
+        volumeProcessor(clip.volume)?.let { audioProcessors.add(it) }
 
         // Handle rotation and horizontal flip
         if (clip.rotationDegrees != 0 || clip.isFlippedHorizontal) {
             effectsList.add(
                 ScaleAndRotateTransformation.Builder()
-                    .setRotationDegrees(clip.rotationDegrees.toFloat())
+                    // Rotate is clockwise in the editor; Media3 rotates counter-clockwise
+                    .setRotationDegrees(-clip.rotationDegrees.toFloat())
                     .setScale(if (clip.isFlippedHorizontal) -1f else 1f, 1f)
                     .build()
             )
         }
 
-        // Force output dimensions and portrait scale
+        // Scale every clip into the project's frame: Fill crops, Fit letterboxes
         effectsList.add(
             Presentation.createForWidthAndHeight(
-                preset.targetWidth,
-                preset.targetHeight,
-                Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP
+                frameWidth,
+                frameHeight,
+                if (isFitMode) Presentation.LAYOUT_SCALE_TO_FIT else Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP
             )
         )
 
-        // Apply video filter LUT adjustments
-        when (clip.filter) {
-            VideoFilter.VIBRANT -> {
-                effectsList.add(
-                    RgbAdjustment.Builder()
-                        .setRedScale(1.15f)
-                        .setGreenScale(1.15f)
-                        .setBlueScale(1.10f)
-                        .build()
-                )
-                effectsList.add(Contrast(0.15f))
-            }
-            VideoFilter.WARM_SUNSET -> {
-                effectsList.add(
-                    RgbAdjustment.Builder()
-                        .setRedScale(1.25f)
-                        .setGreenScale(1.05f)
-                        .setBlueScale(0.85f)
-                        .build()
-                )
-                effectsList.add(Contrast(0.05f))
-            }
-            VideoFilter.COOL_CINEMATIC -> {
-                effectsList.add(
-                    RgbAdjustment.Builder()
-                        .setRedScale(0.85f)
-                        .setGreenScale(1.05f)
-                        .setBlueScale(1.20f)
-                        .build()
-                )
-                effectsList.add(Contrast(0.10f))
-            }
-            VideoFilter.CYBERPUNK -> {
-                effectsList.add(
-                    RgbAdjustment.Builder()
-                        .setRedScale(1.20f)
-                        .setGreenScale(0.85f)
-                        .setBlueScale(1.25f)
-                        .build()
-                )
-                effectsList.add(Contrast(0.25f))
-            }
-            VideoFilter.VINTAGE_FILM -> {
-                effectsList.add(
-                    RgbAdjustment.Builder()
-                        .setRedScale(1.10f)
-                        .setGreenScale(1.00f)
-                        .setBlueScale(0.80f)
-                        .build()
-                )
-                effectsList.add(Contrast(-0.05f))
-            }
-            VideoFilter.MONOCHROME -> {
-                effectsList.add(RgbFilter.createGrayscaleFilter())
-                effectsList.add(Contrast(0.15f))
-            }
-            VideoFilter.NONE -> {}
-        }
+        // Filter + color correction as one matrix: the exact one the preview shows
+        ClipColorMatrix.exportEffectFor(clip)?.let { effectsList.add(it) }
 
         return EditedMediaItem.Builder(mediaItem)
-            .setEffects(Effects(emptyList(), effectsList))
+            .setEffects(Effects(audioProcessors, effectsList))
             .setRemoveAudio(clip.isMuted)
             .build()
+    }
+
+    /** Scales PCM samples by [volume]; null when no change is needed. */
+    private fun volumeProcessor(volume: Float): AudioProcessor? {
+        if (volume == 1.0f) return null
+        return ChannelMixingAudioProcessor().apply {
+            for (channels in 1..MAX_CHANNELS) {
+                val coefficients = FloatArray(channels * channels) { i ->
+                    if (i % (channels + 1) == 0) volume else 0f
+                }
+                putChannelMixingMatrix(ChannelMixingMatrix(channels, channels, coefficients))
+            }
+        }
     }
 
     private suspend fun saveToGallery(sourceFile: File, displayName: String): Uri? = withContext(Dispatchers.IO) {
@@ -300,6 +371,8 @@ class VideoExportManager(
     }
 
     companion object {
+        private const val MAX_CHANNELS = 8
+
         fun createShareIntent(context: Context, file: File?, mediaUri: Uri?): Intent {
             val shareUri = mediaUri ?: file?.let {
                 FileProvider.getUriForFile(

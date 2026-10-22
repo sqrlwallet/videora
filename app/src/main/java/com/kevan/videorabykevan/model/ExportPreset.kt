@@ -1,5 +1,7 @@
 package com.kevan.videorabykevan.model
 
+import kotlin.math.roundToInt
+
 enum class ExportPreset(
     val title: String,
     val badge: String,
@@ -45,5 +47,21 @@ enum class ExportPreset(
         targetHeight = 1280,
         targetFps = 30,
         videoBitrateBps = 6_000_000
-    )
+    );
+
+    /**
+     * Output frame size for the project's aspect ratio at this preset's quality level.
+     * The preset's shorter side (1080 or 720) becomes the frame's shorter side.
+     */
+    fun outputSizeFor(aspectRatio: AspectRatioPreset): Pair<Int, Int> {
+        val shortSide = minOf(targetWidth, targetHeight)
+        val ratio = aspectRatio.aspectRatio
+        val (width, height) = if (ratio <= 1f) {
+            shortSide to (shortSide / ratio).roundToInt()
+        } else {
+            (shortSide * ratio).roundToInt() to shortSide
+        }
+        // H.264 encoders require even dimensions
+        return (width and 1.inv()) to (height and 1.inv())
+    }
 }

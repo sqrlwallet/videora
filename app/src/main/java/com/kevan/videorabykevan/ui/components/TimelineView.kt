@@ -6,9 +6,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -42,22 +46,31 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -85,7 +98,12 @@ import com.kevan.videorabykevan.ui.theme.TextTertiary
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
-private const val DP_PER_SECOND = 48f
+private const val DEFAULT_DP_PER_SECOND = 48f
+private const val MIN_DP_PER_SECOND = 12f
+private const val MAX_DP_PER_SECOND = 240f
+private val RULER_LABEL_STEPS = listOf(1, 2, 5, 10, 15, 30, 60)
+private const val TRACK_HEIGHT_DP = 24
+private const val MIN_CHIP_WIDTH_DP = 28
 
 @Composable
 fun TimelineView(
@@ -103,14 +121,32 @@ fun TimelineView(
     onAddClipClicked: () -> Unit,
     audioTracks: List<AudioTrack> = emptyList(),
     textOverlays: List<TextOverlay> = emptyList(),
+    selectedOverlayId: String? = null,
+    onSelectOverlay: (String) -> Unit = {},
+    selectedAudioTrackId: String? = null,
+    onSelectAudioTrack: (String) -> Unit = {},
+    onScrubStarted: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
-    var isUserScrolling by remember { mutableStateOf(false) }
 
-    val pxPerSecond = with(density) { DP_PER_SECOND.dp.toPx() }
+    // True while the user is dragging the filmstrip or it is still flinging from their drag.
+    // Programmatic scrolls (following playback) never set it, so they don't seek the player.
+    val isDragged by scrollState.interactionSource.collectIsDraggedAsState()
+    var isUserScrubbing by remember { mutableStateOf(false) }
+    LaunchedEffect(isDragged, scrollState.isScrollInProgress) {
+        if (isDragged) {
+            if (!isUserScrubbing) onScrubStarted()
+            isUserScrubbing = true
+        } else if (!scrollState.isScrollInProgress) {
+            isUserScrubbing = false
+        }
+    }
+
+    // Pinch the filmstrip to zoom: fewer dp per second shows more of a long video at once
+    var dpPerSecond by remember { mutableFloatStateOf(DEFAULT_DP_PER_SECOND) }
+    val pxPerSecond = with(density) { dpPerSecond.dp.toPx() }
     val totalDurationSafe = totalDurationMs.coerceAtLeast(1L)
 
     Column(
@@ -273,7 +309,8 @@ fun TimelineView(
         // ==========================================
         // 2. Proportional Scrollable NLE Filmstrip (CapCut / Reels style)
         // ==========================================
-        val filmstripTrackHeight = if (audioTracks.isNotEmpty()) 114.dp else 90.dp
+        val extraTracks = (if (textOverlays.isNotEmpty()) 1 else 0) + (if (audioTracks.isNotEmpty()) 1 else 0)
+        val filmstripTrackHeight = (90 + extraTracks * TRACK_HEIGHT_DP).dp
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
@@ -308,133 +345,164 @@ fun TimelineView(
                     }
                 }
             } else {
-                // Auto-sync timeline scroll with playback position when not actively user-dragging
-                LaunchedEffect(currentPositionMs, isPlaying) {
-                    if (isPlaying && !isUserScrolling) {
-                        val currentSeconds = currentPositionMs / 1000f
-                        val targetPx = (currentSeconds * pxPerSecond).toInt()
-                        scrollState.scrollTo(targetPx)
+                val latestOnSeekTo by rememberUpdatedState(onSeekTo)
+                val latestTotalMs by rememberUpdatedState(totalDurationMs)
+
+                // Scrubbing: the playhead is fixed in the center, so the scroll offset IS the time
+                LaunchedEffect(scrollState, pxPerSecond) {
+                    snapshotFlow { scrollState.value }.collect { offsetPx ->
+                        if (isUserScrubbing) {
+                            val seekMs = (offsetPx / pxPerSecond * 1000f).toLong().coerceIn(0L, latestTotalMs)
+                            latestOnSeekTo(seekMs)
+                        }
                     }
                 }
 
+                // Follow the playhead during playback and after seeks, steps, splits and clip taps
+                LaunchedEffect(currentPositionMs, pxPerSecond) {
+                    if (!isUserScrubbing) {
+                        val targetPx = (currentPositionMs / 1000f * pxPerSecond).toInt()
+                        if (targetPx != scrollState.value) {
+                            scrollState.scrollTo(targetPx)
+                        }
+                    }
+                }
+
+                fun msToDp(ms: Long) = (ms / 1000f * dpPerSecond).dp
+                val contentWidthDp = msToDp(totalDurationSafe)
+
                 Box(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(Unit) {
+                            // Two-finger pinch zooms; one-finger drags still reach the scroller.
+                            // Initial pass + consume stops the filmstrip scrolling mid-pinch.
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                do {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    if (event.changes.count { it.pressed } >= 2) {
+                                        val zoom = event.calculateZoom()
+                                        if (zoom != 1f) {
+                                            dpPerSecond = (dpPerSecond * zoom).coerceIn(MIN_DP_PER_SECOND, MAX_DP_PER_SECOND)
+                                        }
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                } while (event.changes.any { it.pressed })
+                            }
+                        }
                 ) {
                     // Horizontally Scrollable Filmstrip Track
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .horizontalScroll(scrollState)
-                            .pointerInput(Unit) {
-                                detectDragGestures(
-                                    onDragStart = { isUserScrolling = true },
-                                    onDragEnd = { isUserScrolling = false },
-                                    onDragCancel = { isUserScrolling = false },
-                                    onDrag = { change, _ ->
-                                        change.consume()
-                                        val scrollOffset = scrollState.value
-                                        val seekSeconds = scrollOffset / pxPerSecond
-                                        val seekMs = (seekSeconds * 1000L).toLong().coerceIn(0L, totalDurationMs)
-                                        onSeekTo(seekMs)
-                                    }
-                                )
-                            }
                     ) {
                         // Leading spacer so time 00:00 sits precisely under the center playhead needle
                         Spacer(modifier = Modifier.width(halfViewWidthDp))
 
-                        Column {
-                            // Timeline Ruler Track (Ticks every 1s & 5s)
-                            val totalSeconds = (totalDurationSafe / 1000f).toInt() + 1
-                            Row(
+                        Column(modifier = Modifier.width(contentWidthDp)) {
+                            // Timeline Ruler: a tick every second, labels spaced to stay readable at any zoom
+                            val totalSeconds = (totalDurationSafe / 1000L).toInt()
+                            val labelEverySeconds = RULER_LABEL_STEPS.firstOrNull { it * dpPerSecond >= 36f } ?: RULER_LABEL_STEPS.last()
+                            val textMeasurer = rememberTextMeasurer()
+                            val labelStyle = TextStyle(color = TextTertiary, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                            Canvas(
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .height(18.dp)
                                     .background(DarkSurfaceVariant)
                             ) {
+                                val labelPadding = 3.dp.toPx()
                                 for (sec in 0..totalSeconds) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(DP_PER_SECOND.dp)
-                                            .fillMaxHeight()
-                                    ) {
-                                        Canvas(modifier = Modifier.fillMaxSize()) {
-                                            drawLine(
-                                                color = Color.White.copy(alpha = 0.35f),
-                                                start = Offset(0f, size.height),
-                                                end = Offset(0f, 0f),
-                                                strokeWidth = 1.2f
-                                            )
-                                        }
-                                        Text(
+                                    val x = sec * pxPerSecond
+                                    val isLabelled = sec % labelEverySeconds == 0
+                                    drawLine(
+                                        color = Color.White.copy(alpha = if (isLabelled) 0.6f else 0.3f),
+                                        start = Offset(x, size.height),
+                                        end = Offset(x, if (isLabelled) 0f else size.height / 2f),
+                                        strokeWidth = 1.2f
+                                    )
+                                    if (isLabelled) {
+                                        drawText(
+                                            textMeasurer = textMeasurer,
                                             text = "${sec}s",
-                                            color = TextTertiary,
-                                            fontSize = 8.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            modifier = Modifier.padding(start = 3.dp, top = 2.dp)
+                                            style = labelStyle,
+                                            topLeft = Offset(x + labelPadding, 2.dp.toPx())
                                         )
                                     }
                                 }
                             }
 
-                            // Primary Video Filmstrip Track
+                            // Primary Video Filmstrip Track: widths are exactly proportional to
+                            // playback duration so every pixel maps to the same moment as the playhead
                             Row(
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .height(68.dp)
                                     .background(DarkSurface)
-                                    .padding(vertical = 3.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    .padding(vertical = 3.dp)
                             ) {
                                 clips.forEachIndexed { index, clip ->
-                                    val clipSeconds = clip.playbackDurationMs / 1000f
-                                    val clipWidthDp = max(72f, clipSeconds * DP_PER_SECOND).dp
-                                    val isSelected = index == selectedClipIndex
-
                                     VideoClipFilmstripBlock(
                                         clip = clip,
-                                        widthDp = clipWidthDp,
-                                        isSelected = isSelected,
-                                        onClick = {
-                                            onSelectClip(index)
-                                            // Seek to clip start when selected
-                                            val clipStartMs = clips.take(index).sumOf { it.playbackDurationMs }
-                                            onSeekTo(clipStartMs)
-                                        }
+                                        widthDp = msToDp(clip.playbackDurationMs),
+                                        isSelected = index == selectedClipIndex,
+                                        onClick = { onSelectClip(index) }
                                     )
                                 }
                             }
 
-                            // Secondary Audio & Voiceover Strip
-                            if (audioTracks.isNotEmpty()) {
-                                Row(
+                            // Text & Sticker Track, positioned at each overlay's start/end time
+                            if (textOverlays.isNotEmpty()) {
+                                Box(
                                     modifier = Modifier
-                                        .height(24.dp)
+                                        .fillMaxWidth()
+                                        .height(TRACK_HEIGHT_DP.dp)
                                         .background(DarkSurfaceVariant)
-                                        .padding(vertical = 2.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        .padding(vertical = 2.dp)
+                                ) {
+                                    textOverlays.forEach { overlay ->
+                                        val startMs = overlay.startTimeMs.coerceIn(0L, totalDurationSafe)
+                                        val endMs = overlay.endTimeMs.coerceIn(startMs, totalDurationSafe)
+                                        val isSelected = overlay.id == selectedOverlayId
+                                        TimelineTrackChip(
+                                            label = if (overlay.isSticker) overlay.text else "T  ${overlay.text}",
+                                            color = if (overlay.isSticker) GoldChampagne else Color(0xFFFFDE03),
+                                            isSelected = isSelected,
+                                            modifier = Modifier
+                                                .offset(x = msToDp(startMs))
+                                                .width(msToDp(endMs - startMs).coerceAtLeast(MIN_CHIP_WIDTH_DP.dp)),
+                                            onClick = { onSelectOverlay(overlay.id) }
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Music, Voiceover & SFX Track, positioned where each one starts playing
+                            if (audioTracks.isNotEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(TRACK_HEIGHT_DP.dp)
+                                        .background(DarkSurfaceVariant)
+                                        .padding(vertical = 2.dp)
                                 ) {
                                     audioTracks.forEach { track ->
-                                        Row(
+                                        val startMs = track.timelineStartOffsetMs.coerceIn(0L, totalDurationSafe)
+                                        // Unknown length (e.g. picked music) plays to the end of the video
+                                        val lengthMs = track.effectiveDurationMs.takeIf { it > 0L && !track.isLooping }
+                                        val endMs = lengthMs?.let { (startMs + it).coerceAtMost(totalDurationSafe) } ?: totalDurationSafe
+                                        TimelineTrackChip(
+                                            label = track.title,
+                                            icon = if (track.isVoiceover) Icons.Default.Mic else Icons.Default.MusicNote,
+                                            color = if (track.isVoiceover) NeonCoral else HyperCyan,
+                                            isSelected = track.id == selectedAudioTrackId,
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(if (track.isVoiceover) NeonCoral.copy(alpha = 0.25f) else HyperCyan.copy(alpha = 0.25f))
-                                                .border(0.8.dp, if (track.isVoiceover) NeonCoral else HyperCyan, RoundedCornerShape(4.dp))
-                                                .padding(horizontal = 8.dp, vertical = 2.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                if (track.isVoiceover) Icons.Default.Mic else Icons.Default.MusicNote,
-                                                contentDescription = null,
-                                                tint = if (track.isVoiceover) NeonCoral else HyperCyan,
-                                                modifier = Modifier.size(11.dp)
-                                            )
-                                            Text(
-                                                text = track.title,
-                                                color = TextPrimary,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
+                                                .offset(x = msToDp(startMs))
+                                                .width(msToDp(endMs - startMs).coerceAtLeast(MIN_CHIP_WIDTH_DP.dp)),
+                                            onClick = { onSelectAudioTrack(track.id) }
+                                        )
                                     }
                                 }
                             }
@@ -487,6 +555,7 @@ private fun VideoClipFilmstripBlock(
     Box(
         modifier = Modifier
             .width(widthDp)
+            .padding(horizontal = 1.dp)
             .fillMaxHeight()
             .clip(RoundedCornerShape(8.dp))
             .background(DarkCard)
@@ -614,5 +683,40 @@ private fun VideoClipFilmstripBlock(
                     .background(GoldChampagne)
             )
         }
+    }
+}
+
+@Composable
+private fun TimelineTrackChip(
+    label: String,
+    color: Color,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    onClick: (() -> Unit)? = null
+) {
+    Row(
+        modifier = modifier
+            .fillMaxHeight()
+            .padding(horizontal = 1.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(color.copy(alpha = if (isSelected) 0.45f else 0.22f))
+            .border(if (isSelected) 1.5.dp else 0.8.dp, color, RoundedCornerShape(4.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(11.dp))
+        }
+        Text(
+            text = label,
+            color = TextPrimary,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Clip
+        )
     }
 }

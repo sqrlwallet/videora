@@ -3,6 +3,7 @@ package com.kevan.videorabykevan.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kevan.videorabykevan.data.ProjectMediaStore
 import com.kevan.videorabykevan.data.ProjectRepository
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.Project
@@ -60,11 +61,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
-                val clipFile = com.kevan.videorabykevan.data.SampleMediaHelper.generateSampleVideoClip(
+                val projectId = java.util.UUID.randomUUID().toString()
+                val generatedFile = com.kevan.videorabykevan.data.SampleMediaHelper.generateSampleVideoClip(
                     context = context,
                     clipTitle = "Viral Demo Scene",
                     durationSeconds = 5
                 )
+                val clipFile = ProjectMediaStore.adoptFile(context, projectId, generatedFile, move = true)
                 val clip = com.kevan.videorabykevan.model.VideoClip(
                     uri = android.net.Uri.fromFile(clipFile).toString(),
                     name = "Starter Clip (5s)",
@@ -79,6 +82,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     style = com.kevan.videorabykevan.model.TextStylePreset.VIRAL_HOOK
                 )
                 val demoProject = Project(
+                    id = projectId,
                     title = "Demo Viral Short",
                     aspectRatio = AspectRatioPreset.TIKTOK_REELS_SHORTS_9_16,
                     safeZone = SafeZoneType.TIKTOK,
@@ -98,6 +102,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun duplicateProject(id: String) {
         viewModelScope.launch {
             repository.duplicateProject(id)
+            loadProjects()
+        }
+    }
+
+    fun renameProject(id: String, title: String) {
+        val trimmed = title.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            val project = repository.getProject(id) ?: return@launch
+            repository.saveProject(project.copy(title = trimmed))
             loadProjects()
         }
     }
