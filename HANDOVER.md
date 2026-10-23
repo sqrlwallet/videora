@@ -1,7 +1,7 @@
 # Videora: Agent Handover
 
 Context for an agent continuing work on this repo. Read this before changing code.
-Last updated 2026-10-23, on `main`: v1.5.0 release (AI tools in the ai edition).
+Last updated 2026-10-23, on `main`: v1.5.1 release (home and AI settings cleanup; AI tools since v1.5.0).
 
 ## 1. What the app is
 
@@ -20,7 +20,7 @@ About 9k lines of Kotlin in a single `app` module.
 | Media3 | **1.5.1** (pinned; see gotchas) |
 | Images | Coil 2.7.0 (+ `coil-video` for frame thumbnails) |
 | Persistence | Gson 2.11.0, one JSON file |
-| Version | `versionName 1.5.0`, `versionCode 10` (released 2026-10-23 as `videora-v1.5.0.apk` + `videora-ai-v1.5.0.apk`) |
+| Version | `versionName 1.5.1`, `versionCode 11` (released 2026-10-23 as `videora-v1.5.1.apk` + `videora-ai-v1.5.1.apk`) |
 | Build flavors | `offline` (default, no INTERNET) and `ai` (versionName suffix `-ai`, same applicationId) |
 | Remote | `https://github.com/sqrlwallet/videora` |
 
@@ -97,7 +97,7 @@ ai/                     (package com.kevan.videorabykevan.ai, split across sourc
                AndroidManifest.xml  adds INTERNET (merged only into the ai edition)
 ui/
   screens/EditorScreen    wires everything; snackbar (undo), BackHandler, sheets
-  screens/HomeScreen      project list, rename/delete dialogs, thumbnails
+  screens/HomeScreen      "New video" (pick 9:16 / 1:1 / 16:9), project list, rename/delete dialogs, thumbnails
   viewmodel/EditorViewModel  all edit actions, undo/redo (25-deep project snapshots), selection
   components/             TimelineView, ClipActionRow (contextual toolbar), VideoPlayerView,
                           TextOverlayCanvas, *Sheet bottom sheets
@@ -234,6 +234,10 @@ Build each edition's release (see section 2), then copy
 so installing one over the other keeps the user's projects.
 
 ### Conventions
+- **Only what helps make a better video goes in the UI.** The owner removed the marketing chrome
+  (PRO STUDIO badge, "Local-first"/privacy pill and banner, feature-advert cards and chips, the
+  open-source info sheet). Don't add badges, slogans or feature showcases; privacy and licence
+  details belong in the README.
 - Match the existing style: Compose with explicit theme colors from `ui/theme/Color.kt`
   (`GoldChampagne`, `AccentCyan`, `NeonCoral`, `DarkSurface`...), short intent comments.
 - Import order: all others, then `java.*`, `javax.*`, `kotlin.*`, each alphabetical.

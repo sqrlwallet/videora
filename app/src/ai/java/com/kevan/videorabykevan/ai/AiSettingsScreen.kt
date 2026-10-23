@@ -25,7 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -107,15 +106,9 @@ fun AiSettingsScreen(onBack: () -> Unit, viewModel: AiSettingsViewModel = viewMo
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            PrivacyCard()
             KeyCard(state, viewModel)
             SettingsCard {
                 SectionTitle("Models")
-                Text(
-                    "Each feature uses its own model, billed to your OpenRouter account.",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
                 AiTask.entries.forEach { task ->
                     ModelRow(task, state.models[task] ?: task.defaultModelId, onChange = { viewModel.openModelPicker(task) })
                 }
@@ -133,20 +126,6 @@ fun AiSettingsScreen(onBack: () -> Unit, viewModel: AiSettingsViewModel = viewMo
             onPick = { viewModel.setModel(task, it) },
             onDismiss = viewModel::closeModelPicker
         )
-    }
-}
-
-@Composable
-private fun PrivacyCard() {
-    SettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Lock, contentDescription = null, tint = EmeraldAccent, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            SectionTitle("Off until you use it")
-        }
-        Bullet("Nothing leaves your phone until you tap an AI action. Editing and export stay fully offline.")
-        Bullet("When you do, only what that action needs (for example a clip's audio, or your project title) goes to OpenRouter and the model provider you choose.")
-        Bullet("Your key is encrypted on this phone and excluded from backups. Usage is billed to your own OpenRouter account.")
     }
 }
 
@@ -174,11 +153,6 @@ private fun KeyCard(state: AiSettingsUiState, viewModel: AiSettingsViewModel) {
                 }
             }
         } else {
-            Text(
-                "Paste a key from your OpenRouter account. You can give it a spending limit there.",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
             KeyInputField(state, viewModel)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(
@@ -286,7 +260,6 @@ private fun ModelRow(task: AiTask, modelId: String, onChange: () -> Unit) {
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(task.title, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            Text(task.description, color = TextSecondary, fontSize = 11.sp)
             Text(
                 modelId,
                 color = GoldChampagne,
@@ -314,13 +287,7 @@ private fun ModelPickerSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = DarkSurface) {
         Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-            Text(task.title, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "Models that accept ${task.requiredInput}, cheapest first.",
-                color = TextSecondary,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            Text(task.title, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -428,14 +395,6 @@ private fun SettingsCard(content: @Composable () -> Unit) {
 @Composable
 private fun SectionTitle(text: String) {
     Text(text, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-}
-
-@Composable
-private fun Bullet(text: String) {
-    Row {
-        Text("•", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(end = 6.dp))
-        Text(text, color = TextSecondary, fontSize = 12.sp)
-    }
 }
 
 @Composable

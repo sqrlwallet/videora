@@ -9,10 +9,10 @@ import com.google.gson.JsonParser
 // (parsing, errors, model choices) so it can be unit tested without Android or a network.
 
 /** What a feature needs from a model; the settings screen keeps one model per task. */
-enum class AiTask(val title: String, val description: String, val requiredInput: String) {
-    TEXT("Text model", "Hooks, post captions, rewriting and translating text", "text"),
-    VISION("Vision model", "Auto color and ideas from your video's frames", "image"),
-    AUDIO("Audio model", "Transcribing speech for auto-captions", "audio");
+enum class AiTask(val title: String, val requiredInput: String) {
+    TEXT("Text model", "text"),
+    VISION("Vision model", "image"),
+    AUDIO("Audio model", "audio");
 
     // An OpenRouter alias that tracks the current Gemini Flash, which takes text and audio,
     // so the default doesn't go stale as model versions change

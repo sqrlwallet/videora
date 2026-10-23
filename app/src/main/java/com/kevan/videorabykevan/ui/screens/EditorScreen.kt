@@ -78,7 +78,6 @@ import com.kevan.videorabykevan.ui.components.ClipActionRow
 import com.kevan.videorabykevan.ui.components.ExportDialog
 import com.kevan.videorabykevan.ui.components.FadeSheet
 import com.kevan.videorabykevan.ui.components.FilterSheet
-import com.kevan.videorabykevan.ui.components.OpenSourceSheet
 import com.kevan.videorabykevan.ui.components.SafeZoneSheet
 import com.kevan.videorabykevan.ui.components.SpeedSheet
 import com.kevan.videorabykevan.ui.components.StickerSheet
@@ -668,8 +667,5 @@ fun EditorScreen(
             )
         }
 
-        if (uiState.showOpenSourceSheet) {
-            OpenSourceSheet(onDismiss = { viewModel.setShowOpenSourceSheet(false) })
-        }
     }
 }

@@ -255,15 +255,8 @@ fun VideoPlayerView(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = "9:16 Canvas Ready",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-
-                    Text(
-                        text = "Import video clips to begin crafting your viral short",
-                        color = Color.White.copy(alpha = 0.6f),
+                        text = "Add videos or photos to start",
+                        color = Color.White.copy(alpha = 0.7f),
                         fontSize = 12.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         modifier = Modifier.padding(top = 4.dp, bottom = 18.dp)

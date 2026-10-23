@@ -15,26 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.TextFields
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -58,9 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -75,22 +63,11 @@ import coil.request.videoFrameMillis
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.Project
 import com.kevan.videorabykevan.ui.components.ExportProgressBanner
-import com.kevan.videorabykevan.ui.components.OpenSourceSheet
 import com.kevan.videorabykevan.ui.theme.DarkBackground
 import com.kevan.videorabykevan.ui.theme.DarkCard
-import com.kevan.videorabykevan.ui.theme.DarkElevated
-import com.kevan.videorabykevan.ui.theme.DarkStudioCardGradient
-import com.kevan.videorabykevan.ui.theme.DarkSurface
 import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
-import com.kevan.videorabykevan.ui.theme.EmeraldAccent
 import com.kevan.videorabykevan.ui.theme.GoldChampagne
-import com.kevan.videorabykevan.ui.theme.GoldMetallic
 import com.kevan.videorabykevan.ui.theme.GoldRimGradient
-import com.kevan.videorabykevan.ui.theme.HyperCyan
-import com.kevan.videorabykevan.ui.theme.LuxuryAmethystGradient
-import com.kevan.videorabykevan.ui.theme.LuxuryGoldGradient
-import com.kevan.videorabykevan.ui.theme.NeonCoral
-import com.kevan.videorabykevan.ui.theme.RoyalAmethyst
 import com.kevan.videorabykevan.ui.theme.TextPrimary
 import com.kevan.videorabykevan.ui.theme.TextSecondary
 import com.kevan.videorabykevan.ui.theme.TextTertiary
@@ -107,7 +84,6 @@ fun HomeScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val exportState by viewModel.exportState.collectAsState()
-    var showOpenSourceInfo by remember { mutableStateOf(false) }
     var projectPendingDelete by remember { mutableStateOf<Project?>(null) }
     var projectBeingRenamed by remember { mutableStateOf<Project?>(null) }
 
@@ -116,60 +92,12 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Brand Monogram Badge
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(DarkSurfaceVariant)
-                                .border(1.5.dp, GoldRimGradient, RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "V",
-                                color = GoldChampagne,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 20.sp,
-                                fontFamily = FontFamily.SansSerif
-                            )
-                        }
-
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "VIDEORA",
-                                    color = TextPrimary,
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 17.sp,
-                                    letterSpacing = 1.2.sp
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Brush.horizontalGradient(listOf(GoldChampagne, GoldMetallic)))
-                                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                                ) {
-                                    Text(
-                                        text = "PRO STUDIO",
-                                        color = Color.Black,
-                                        fontSize = 8.sp,
-                                        fontWeight = FontWeight.Black
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "Shorts • TikTok • Reels Engine",
-                                color = TextSecondary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
+                    Text(
+                        text = "Videora",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 20.sp
+                    )
                 },
                 actions = {
                     if (onOpenAiSettings != null) {
@@ -177,38 +105,6 @@ fun HomeScreen(
                             Icon(Icons.Default.AutoAwesome, contentDescription = "AI settings", tint = GoldChampagne)
                         }
                     }
-                    // Privacy & Offline Signal Pill
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(DarkSurfaceVariant)
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                            .clickable { showOpenSourceInfo = true }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(EmeraldAccent)
-                        )
-                        Text(
-                            // The AI edition can send data when asked, so it doesn't claim 100% local
-                            text = if (onOpenAiSettings != null) "Local-first" else "100% Local",
-                            color = TextPrimary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Icon(
-                            Icons.Default.Info,
-                            contentDescription = "Info",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
             )
@@ -221,11 +117,7 @@ fun HomeScreen(
                     .padding(innerPadding),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = GoldChampagne, strokeWidth = 3.dp)
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text("Loading Creator Studio...", color = TextSecondary, fontSize = 13.sp)
-                }
+                CircularProgressIndicator(color = GoldChampagne, strokeWidth = 3.dp)
             }
         } else {
             LazyColumn(
@@ -241,38 +133,19 @@ fun HomeScreen(
                     }
                 }
 
-                // Section 1: Privacy Guarantee Ribbon
-                item {
-                    PrivacyBannerRibbon(onClick = { showOpenSourceInfo = true })
-                }
-
-                // Section 2: Hero 9:16 Creation Master Card
-                item {
-                    HeroCreationCard(
-                        onCreateProject = {
-                            viewModel.createNewProject(
-                                title = "Viral Reel ${uiState.projects.size + 1}",
-                                aspectRatio = AspectRatioPreset.TIKTOK_REELS_SHORTS_9_16,
-                                onCreated = onOpenProject
-                            )
-                        }
-                    )
-                }
-
-                // Section 3: Quick Aspect Ratio Presets
+                // New video: pick its shape
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "Canvas Aspect Ratios",
-                            color = TextSecondary,
-                            fontSize = 12.sp,
+                            text = "New video",
+                            color = TextPrimary,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
+                            fontSize = 17.sp
                         )
                         AspectRatioPresetRow(
                             onSelect = { preset ->
                                 viewModel.createNewProject(
-                                    title = "${preset.label} Project",
+                                    title = "${preset.label} ${uiState.projects.size + 1}",
                                     aspectRatio = preset,
                                     onCreated = onOpenProject
                                 )
@@ -281,58 +154,18 @@ fun HomeScreen(
                     }
                 }
 
-                // Section 4: Creator Studio Toolkit Highlights
                 item {
-                    StudioToolkitRow()
+                    Text(
+                        text = "Your projects",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
                 }
 
-                // Section 5: Drafts & Projects Header
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Your Projects",
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 17.sp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(DarkSurfaceVariant)
-                                    .padding(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "${uiState.projects.size}",
-                                    color = GoldChampagne,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        if (uiState.projects.isNotEmpty()) {
-                            Text(
-                                text = "Auto-saved locally",
-                                color = TextTertiary,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                }
-
-                // Section 6: Projects List or Empty State
                 if (uiState.projects.isEmpty()) {
                     item {
                         EmptyStudioPlaceholder(
-                            onCreateNew = {
-                                viewModel.createNewProject(onCreated = onOpenProject)
-                            },
                             onLoadDemo = {
                                 viewModel.createDemoProject(context = context, onCreated = onOpenProject)
                             }
@@ -354,10 +187,6 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(28.dp))
                 }
             }
-        }
-
-        if (showOpenSourceInfo) {
-            OpenSourceSheet(onDismiss = { showOpenSourceInfo = false })
         }
 
         // Deleting removes the project's clips and recordings too, so always confirm
@@ -430,160 +259,6 @@ fun HomeScreen(
 }
 
 @Composable
-private fun PrivacyBannerRibbon(onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(DarkSurfaceVariant)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(Icons.Default.Shield, contentDescription = null, tint = EmeraldAccent, modifier = Modifier.size(16.dp))
-            Text(
-                text = "Zero Cloud Uploads • No Accounts • Offline Engine",
-                color = TextSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-
-        Icon(
-            Icons.AutoMirrored.Filled.ArrowForward,
-            contentDescription = "Details",
-            tint = TextTertiary,
-            modifier = Modifier.size(14.dp)
-        )
-    }
-}
-
-@Composable
-private fun HeroCreationCard(onCreateProject: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(DarkStudioCardGradient)
-            .border(1.5.dp, GoldRimGradient, RoundedCornerShape(22.dp))
-            .clickable(onClick = onCreateProject)
-            .padding(22.dp)
-    ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Brush.horizontalGradient(listOf(GoldChampagne, GoldMetallic)))
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                text = "9:16 VERTICAL",
-                                color = Color.Black,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color.White.copy(alpha = 0.1f))
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                text = "TIKTOK • REELS • SHORTS",
-                                color = TextPrimary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = "New Short / Reel",
-                        color = TextPrimary,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Black
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "Hardware-accelerated editing with multi-track timeline, safe zones & audio studio.",
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(CircleShape)
-                        .background(LuxuryGoldGradient),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "New Project",
-                        tint = Color.Black,
-                        modifier = Modifier.size(30.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Pro Tags
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                StudioPillTag("🎙️ Voiceover")
-                StudioPillTag("🔊 SFX Board")
-                StudioPillTag("⚡ Speed Ramp")
-                StudioPillTag("↶ Undo/Redo")
-            }
-        }
-    }
-}
-
-@Composable
-private fun StudioPillTag(label: String) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(DarkElevated)
-            .border(0.8.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-        Text(
-            text = label,
-            color = TextSecondary,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-}
-
-@Composable
 private fun AspectRatioPresetRow(onSelect: (AspectRatioPreset) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -592,7 +267,7 @@ private fun AspectRatioPresetRow(onSelect: (AspectRatioPreset) -> Unit) {
         AspectRatioCard(
             preset = AspectRatioPreset.TIKTOK_REELS_SHORTS_9_16,
             ratioText = "9:16",
-            platformText = "Reels / TikTok",
+            platformText = "TikTok",
             isFeatured = true,
             modifier = Modifier.weight(1f),
             onClick = { onSelect(AspectRatioPreset.TIKTOK_REELS_SHORTS_9_16) }
@@ -600,7 +275,7 @@ private fun AspectRatioPresetRow(onSelect: (AspectRatioPreset) -> Unit) {
         AspectRatioCard(
             preset = AspectRatioPreset.SQUARE_1_1,
             ratioText = "1:1",
-            platformText = "Square Feed",
+            platformText = "Square",
             isFeatured = false,
             modifier = Modifier.weight(1f),
             onClick = { onSelect(AspectRatioPreset.SQUARE_1_1) }
@@ -608,7 +283,7 @@ private fun AspectRatioPresetRow(onSelect: (AspectRatioPreset) -> Unit) {
         AspectRatioCard(
             preset = AspectRatioPreset.LANDSCAPE_16_9,
             ratioText = "16:9",
-            platformText = "YouTube Cinema",
+            platformText = "YouTube",
             isFeatured = false,
             modifier = Modifier.weight(1f),
             onClick = { onSelect(AspectRatioPreset.LANDSCAPE_16_9) }
@@ -638,6 +313,12 @@ private fun AspectRatioCard(
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Icon(
+            Icons.Default.Add,
+            contentDescription = null,
+            tint = if (isFeatured) GoldChampagne else TextSecondary,
+            modifier = Modifier.size(20.dp)
+        )
         Text(
             text = ratioText,
             color = if (isFeatured) GoldChampagne else TextPrimary,
@@ -651,79 +332,6 @@ private fun AspectRatioCard(
             fontSize = 10.sp,
             maxLines = 1
         )
-    }
-}
-
-@Composable
-private fun StudioToolkitRow() {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item {
-            ToolkitItem(
-                icon = Icons.Default.Mic,
-                title = "Voiceover Studio",
-                subtitle = "Mic commentary sync",
-                tint = NeonCoral
-            )
-        }
-        item {
-            ToolkitItem(
-                icon = Icons.Default.GraphicEq,
-                title = "SFX Soundboard",
-                subtitle = "6 offline synthesized audio",
-                tint = HyperCyan
-            )
-        }
-        item {
-            ToolkitItem(
-                icon = Icons.Default.Speed,
-                title = "Speed Ramping",
-                subtitle = "0.25x Slo-Mo to 3x Hyper",
-                tint = GoldChampagne
-            )
-        }
-        item {
-            ToolkitItem(
-                icon = Icons.Default.TextFields,
-                title = "Viral Text Hooks",
-                subtitle = "Retention templates",
-                tint = RoyalAmethyst
-            )
-        }
-    }
-}
-
-@Composable
-private fun ToolkitItem(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    tint: Color
-) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(DarkSurfaceVariant)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(8.dp))
-            .background(tint.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-        }
-
-        Column {
-            Text(title, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text(subtitle, color = TextTertiary, fontSize = 10.sp)
-        }
     }
 }
 
@@ -750,7 +358,7 @@ private fun ProjectItemCard(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            // Thumbnail of the first clip, with the aspect ratio and clip count on top
+            // Thumbnail of the first clip
             val firstClip = project.clips.firstOrNull()
             val context = LocalContext.current
             Box(
@@ -773,20 +381,8 @@ private fun ProjectItemCard(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
-                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = project.aspectRatio.label,
-                        color = GoldChampagne,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                    Text(
-                        text = "${project.clipCount}c",
-                        color = TextSecondary,
-                        fontSize = 9.sp
-                    )
+                } else {
+                    Icon(Icons.Default.Movie, contentDescription = null, tint = TextTertiary, modifier = Modifier.size(20.dp))
                 }
             }
 
@@ -804,37 +400,12 @@ private fun ProjectItemCard(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // Duration Monospace Pill
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(DarkElevated)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = project.formattedDuration,
-                            color = GoldChampagne,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp
-                        )
-                    }
-
-                    if (project.audioTracks.isNotEmpty()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.MusicNote, contentDescription = null, tint = HyperCyan, modifier = Modifier.size(12.dp))
-                            Text(" Audio", color = HyperCyan, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-
-                    if (project.textOverlays.isNotEmpty()) {
-                        Text("• ${project.textOverlays.size} text", color = TextTertiary, fontSize = 10.sp)
-                    }
-                }
+                Text(
+                    text = project.formattedDuration,
+                    color = TextSecondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp
+                )
             }
         }
 
@@ -892,90 +463,36 @@ private fun ProjectItemCard(
 }
 
 @Composable
-private fun EmptyStudioPlaceholder(
-    onCreateNew: () -> Unit,
-    onLoadDemo: () -> Unit
-) {
+private fun EmptyStudioPlaceholder(onLoadDemo: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(DarkCard)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
-            .padding(28.dp),
+            .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
-                .background(LuxuryGoldGradient),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Default.PlayArrow,
-                contentDescription = null,
-                tint = Color.Black,
-                modifier = Modifier.size(36.dp)
-            )
-        }
+        Text(
+            text = "No projects yet",
+            color = TextSecondary,
+            fontSize = 13.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 18.sp
+        )
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        Text(
-            text = "Your Studio Canvas Is Ready",
-            color = TextPrimary,
-            fontWeight = FontWeight.Black,
-            fontSize = 17.sp
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Text(
-            text = "Import clips from your phone gallery or start instantly with a sample viral demo reel.",
-            color = TextSecondary,
-            fontSize = 12.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            lineHeight = 16.sp
-        )
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        Button(
+            onClick = onLoadDemo,
+            colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
+            shape = RoundedCornerShape(12.dp)
         ) {
-            Button(
-                onClick = onCreateNew,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = GoldChampagne),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    text = "+ Blank Project",
-                    color = Color.Black,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp
-                )
-            }
-
-            Button(
-                onClick = onLoadDemo,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = GoldChampagne, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Demo Reel",
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
-                    )
-                }
-            }
+            Text(
+                text = "Open demo project",
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
         }
     }
 }

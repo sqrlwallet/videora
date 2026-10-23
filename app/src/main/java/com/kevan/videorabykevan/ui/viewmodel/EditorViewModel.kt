@@ -62,7 +62,6 @@ data class EditorUiState(
     val showAudioSheet: Boolean = false,
     val showSafeZoneSheet: Boolean = false,
     val showExportDialog: Boolean = false,
-    val showOpenSourceSheet: Boolean = false,
     val showVoiceoverSheet: Boolean = false,
     val showStickerSheet: Boolean = false,
     val showVolumeSheet: Boolean = false,
@@ -1182,7 +1181,6 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun setShowAudioSheet(show: Boolean) = _uiState.update { it.copy(showAudioSheet = show) }
     fun setShowSafeZoneSheet(show: Boolean) = _uiState.update { it.copy(showSafeZoneSheet = show) }
     fun setShowExportDialog(show: Boolean) = _uiState.update { it.copy(showExportDialog = show) }
-    fun setShowOpenSourceSheet(show: Boolean) = _uiState.update { it.copy(showOpenSourceSheet = show) }
     fun setShowVoiceoverSheet(show: Boolean) = _uiState.update { it.copy(showVoiceoverSheet = show) }
     fun setShowStickerSheet(show: Boolean) = _uiState.update { it.copy(showStickerSheet = show) }
     fun setShowVolumeSheet(show: Boolean) = _uiState.update { it.copy(showVolumeSheet = show) }
