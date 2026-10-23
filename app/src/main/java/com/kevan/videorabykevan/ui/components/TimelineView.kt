@@ -61,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -85,6 +86,7 @@ import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import coil.request.videoFrameMillis
 import com.kevan.videorabykevan.model.AudioTrack
+import com.kevan.videorabykevan.model.MIN_AUDIO_TRIM_MS
 import com.kevan.videorabykevan.model.TextOverlay
 import com.kevan.videorabykevan.model.VideoClip
 import com.kevan.videorabykevan.ui.theme.DarkBackground
@@ -163,6 +165,7 @@ fun TimelineView(
     onMoveOverlay: (id: String, startMs: Long) -> Unit = { _, _ -> },
     onMoveAudioTrack: (id: String, startMs: Long) -> Unit = { _, _ -> },
     onSetOverlayTiming: (id: String, startMs: Long, endMs: Long) -> Unit = { _, _, _ -> },
+    onTrimAudioTrack: (id: String, startOffsetMs: Long, trimStartMs: Long, trimEndMs: Long) -> Unit = { _, _, _, _ -> },
     onMoveClip: (from: Int, to: Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
@@ -195,6 +198,13 @@ fun TimelineView(
         ?: clips
     // Laid out from the clips (not the player) so a live trim resizes the strip immediately
     val totalDurationSafe = displayClips.sumOf { it.playbackDurationMs }.coerceAtLeast(1L)
+
+    // Dragging the selected audio track's edges trims it live; saved on release
+    var audioTrimPreview by remember { mutableStateOf<AudioTrack?>(null) }
+    val displayAudioTracks = audioTrimPreview
+        ?.takeIf { it.id == selectedAudioTrackId }
+        ?.let { preview -> audioTracks.map { if (it.id == preview.id) preview else it } }
+        ?: audioTracks
 
     var chipDrag by remember { mutableStateOf<ChipDrag?>(null) }
     val clipBoundariesMs = remember(clips) { clips.runningFold(0L) { acc, clip -> acc + clip.playbackDurationMs } }
@@ -676,7 +686,7 @@ fun TimelineView(
                             }
 
                             // Music, Voiceover & SFX Track, positioned where each one starts playing
-                            if (audioTracks.isNotEmpty()) {
+                            if (displayAudioTracks.isNotEmpty()) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -684,27 +694,46 @@ fun TimelineView(
                                         .background(DarkSurfaceVariant)
                                         .padding(vertical = 2.dp)
                                 ) {
-                                    audioTracks.forEach { track ->
-                                        val startMs = chipSpan(track.id, track.timelineStartOffsetMs, track.timelineStartOffsetMs).first.coerceIn(0L, totalDurationSafe)
+                                    displayAudioTracks.forEach { track ->
                                         val isSelected = track.id == selectedAudioTrackId
-                                        // Unknown length (e.g. picked music) plays to the end of the video
                                         val lengthMs = track.effectiveDurationMs.takeIf { it > 0L && !track.isLooping }
-                                        val endMs = lengthMs?.let { (startMs + it).coerceAtMost(totalDurationSafe) } ?: totalDurationSafe
+                                        val chipLengthMs = lengthMs ?: (totalDurationSafe - track.timelineStartOffsetMs).coerceAtLeast(MIN_AUDIO_TRIM_MS)
+                                        val (spanStart, spanEnd) = chipSpan(track.id, track.timelineStartOffsetMs, track.timelineStartOffsetMs + chipLengthMs)
+                                        val startMs = spanStart.coerceIn(0L, totalDurationSafe)
+                                        val endMs = spanEnd.coerceIn(startMs, totalDurationSafe)
+                                        val chipDurMs = if (track.isLooping) (totalDurationSafe - startMs).coerceAtLeast(1L) else track.effectiveDurationMs.takeIf { it > 0 } ?: (endMs - startMs).coerceAtLeast(1L)
                                         TimelineTrackChip(
                                             label = track.title,
                                             icon = if (track.isVoiceover) Icons.Default.Mic else Icons.Default.MusicNote,
                                             color = if (track.isVoiceover) NeonCoral else HyperCyan,
                                             isSelected = isSelected,
                                             isDragging = chipDrag?.id == track.id,
+                                            fadeInMs = track.fadeInMs,
+                                            fadeOutMs = track.fadeOutMs,
+                                            chipDurationMs = chipDurMs,
                                             modifier = Modifier
                                                 .offset(x = msToDp(startMs))
                                                 .width(msToDp(endMs - startMs).coerceAtLeast(MIN_CHIP_WIDTH_DP.dp))
                                                 .dragAlongTimeline(
                                                     enabled = isSelected,
                                                     key = track.id,
-                                                    onDrag = { dragChip(track.id, null, track.timelineStartOffsetMs, track.timelineStartOffsetMs, it) },
+                                                    onDrag = { dragChip(track.id, null, track.timelineStartOffsetMs, track.timelineStartOffsetMs + chipLengthMs, it) },
                                                     onEnd = { endChipDrag(onMoveAudioTrack) }
                                                 ),
+                                            onEdgeDrag = if (isSelected && !track.isLooping) { edge, deltaPx ->
+                                                val base = audioTrimPreview ?: track
+                                                audioTrimPreview = base.trimmedByDrag(edge == ChipEdge.START, (deltaPx / pxPerSecond * 1000f).toLong())
+                                            } else null,
+                                            onEdgeEnd = {
+                                                audioTrimPreview?.let { preview ->
+                                                    val original = audioTracks.find { it.id == preview.id }
+                                                    if (original != null && (preview.timelineStartOffsetMs != original.timelineStartOffsetMs ||
+                                                            preview.trimStartMs != original.trimStartMs || preview.trimEndMs != original.trimEndMs)) {
+                                                        onTrimAudioTrack(preview.id, preview.timelineStartOffsetMs, preview.trimStartMs, preview.trimEndMs)
+                                                    }
+                                                }
+                                                audioTrimPreview = null
+                                            },
                                             onClick = { onSelectAudioTrack(track.id) }
                                         )
                                     }
@@ -971,6 +1000,9 @@ private fun TimelineTrackChip(
     modifier: Modifier = Modifier,
     isDragging: Boolean = false,
     icon: ImageVector? = null,
+    fadeInMs: Long = 0L,
+    fadeOutMs: Long = 0L,
+    chipDurationMs: Long = 0L,
     onEdgeDrag: ((ChipEdge, deltaPx: Float) -> Unit)? = null,
     onEdgeEnd: () -> Unit = {},
     onClick: (() -> Unit)? = null
@@ -984,6 +1016,48 @@ private fun TimelineTrackChip(
             .border(if (isSelected) 1.5.dp else 0.8.dp, if (isDragging) Color.White else color, RoundedCornerShape(4.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
+        if ((fadeInMs > 0L || fadeOutMs > 0L) && chipDurationMs > 0L) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val chipW = size.width
+                val chipH = size.height
+                val clampedIn = fadeInMs.coerceIn(0L, chipDurationMs / 2).toFloat()
+                val clampedOut = fadeOutMs.coerceIn(0L, chipDurationMs / 2).toFloat()
+
+                val inW = (clampedIn / chipDurationMs * chipW).coerceIn(0f, chipW / 2f)
+                if (inW > 1f) {
+                    val inPath = Path().apply {
+                        moveTo(0f, 0f)
+                        lineTo(inW, 0f)
+                        lineTo(0f, chipH)
+                        close()
+                    }
+                    drawPath(inPath, color = Color.Black.copy(alpha = 0.5f))
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.6f),
+                        start = Offset(0f, chipH),
+                        end = Offset(inW, 0f),
+                        strokeWidth = 1.5.dp.toPx()
+                    )
+                }
+
+                val outW = (clampedOut / chipDurationMs * chipW).coerceIn(0f, chipW / 2f)
+                if (outW > 1f) {
+                    val outPath = Path().apply {
+                        moveTo(chipW - outW, 0f)
+                        lineTo(chipW, 0f)
+                        lineTo(chipW, chipH)
+                        close()
+                    }
+                    drawPath(outPath, color = Color.Black.copy(alpha = 0.5f))
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.6f),
+                        start = Offset(chipW - outW, 0f),
+                        end = Offset(chipW, chipH),
+                        strokeWidth = 1.5.dp.toPx()
+                    )
+                }
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxSize()

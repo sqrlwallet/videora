@@ -128,6 +128,9 @@ class TextOverlayBitmapOverlay(
         canvas.save()
         canvas.translate(0f, frame.offsetY * frameHeight)
         canvas.scale(frame.scale, frame.scale, box.centerX(), box.centerY())
+        if (overlay.rotation != 0f) {
+            canvas.rotate(overlay.rotation, box.centerX(), box.centerY())
+        }
         if (bgPaint.alpha > 0) {
             canvas.drawRoundRect(box, radius, radius, bgPaint)
         }

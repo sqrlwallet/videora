@@ -97,7 +97,8 @@ data class TextOverlay(
     val isSticker: Boolean = false,
     val animation: TextAnimation = TextAnimation.NONE,
     // Made by AI auto-captions; re-running them replaces these
-    val isAutoCaption: Boolean = false
+    val isAutoCaption: Boolean = false,
+    val rotation: Float = 0f // Clockwise rotation in degrees
 ) {
     /** How the overlay looks [timeMs] into the timeline; same values drive the preview and the export. */
     fun animationFrameAt(timeMs: Long): TextAnimationFrame {

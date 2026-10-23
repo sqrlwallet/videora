@@ -41,8 +41,8 @@ export JAVA_HOME=/snap/android-studio/current/jbr
 - After a release build, confirm the offline APK has no INTERNET permission:
   `~/Android/Sdk/build-tools/36.0.0/aapt dump badging <apk> | grep INTERNET` (expect nothing).
 
-- Unit tests: `app/src/test/.../VideoraUnitTest.kt`, `ColorCorrectionTest.kt` and `OpenRouterTest.kt`
-  (35 tests, all passing in both flavors).
+- Unit tests: `app/src/test/.../VideoraUnitTest.kt`, `ColorCorrectionTest.kt`, `AiToolsTest.kt`, and `OpenRouterTest.kt`
+  (56 tests, all passing in both flavors).
   They are plain JVM tests with no Robolectric. Code that touches `android.*` classes can't be unit tested,
   so keep logic in pure Kotlin where possible (as `ClipColorMatrix` and `ProjectJson` do).
 - The release build uses R8 with `app/src/main/keepRules/rules.keep`. Everything in `model.**` is kept for Gson.
@@ -299,6 +299,13 @@ areas most likely to fail:
   is also unverified: check AAC and Opus sources and a voiceover recording.
 - **Noir B&W** now uses the luma-based grayscale from the shared matrix, so it looks slightly
   different from older exports.
+- **Audio trimming on the timeline (new):** dragging the start edge of a selected audio chip shifts
+  its start offset and trims the front (`AudioTrack.trimmedByDrag`); dragging the end edge trims the end.
+  Check that playback and export stay in sync with the trimmed segment and that looping tracks behave appropriately.
+- **Audio fade ramps (new):** visual envelope drawn directly on timeline audio chips (fade-in and fade-out wedges).
+- **Text & sticker rotation (new):** two-finger twist gesture on the canvas rotates the selected overlay
+  with magnetic snapping to cardinal angles (-180°, -90°, 0°, 90°, 180°), and "Straighten" action resets it.
+  Export draws with matching `canvas.rotate()` around the box center.
 
 ## 5. Prioritized backlog
 
@@ -316,14 +323,12 @@ High value:
    model's price, i.e. a `GET /models` call the user agrees to), a cover-frame picker, and
    word-by-word animated captions.
 5. ~~Audio fades~~ (done; decision 9). ~~Ducking~~ (done; decision 13).
-6. ~~Background export~~ (done; decision 7). Home shows a progress banner. Another project's
-   editor still opens the shared export dialog showing that progress, which is acceptable but could
-   say which project it belongs to (`ExportProgressState.projectTitle` is available).
+6. ~~Background export~~ (done; decision 7). Home shows a progress banner. Export dialog shows `projectTitle`.
 
 Medium:
-- Draw fade ramps on the timeline's audio chips.
-- Trimming audio tracks on the timeline (dragging chip edges; text chips already have this).
-- Rotating text and stickers on the canvas (pinch-to-resize is done).
+- ~~Draw fade ramps on the timeline's audio chips~~ (done).
+- ~~Trimming audio tracks on the timeline~~ (done; dragging chip edges).
+- ~~Rotating text and stickers on the canvas~~ (done; pinch & twist to rotate + Straighten action).
 - TikTok/Instagram features not yet here: reverse
   (needs a re-encode), non-pitch voice effects (robot, echo: need a custom AudioProcessor in the
   export and a preview RenderersFactory), clip opacity/overlay (picture-in-picture), keyframes,
@@ -335,8 +340,7 @@ Medium:
 - Split the large files: `EditorViewModel` (~840 lines), `HomeScreen` (~965), `TimelineView` (~720).
 
 Known smaller issues:
-- `addVideoUris` copies picked clips to `projects/<id>/clips`, not `ProjectMediaStore`'s `media`
-  folder. Both are inside the project folder so duplicate/delete work, but it's inconsistent.
+- ~~addVideoUris copies picked clips to projects/<id>/clips~~ (fixed: now consistently stored in `ProjectMediaStore`'s `media` folder).
 - Volume boost above 100% would need a gain `AudioProcessor` in the preview's ExoPlayer
   (custom `RenderersFactory`), then the export clamp in `volumeProcessor` can be lifted.
 

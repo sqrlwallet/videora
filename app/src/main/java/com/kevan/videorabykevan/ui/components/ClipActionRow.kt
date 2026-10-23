@@ -113,6 +113,7 @@ fun ClipActionRow(
     onOverlayEndHere: () -> Unit,
     onDuplicateOverlay: () -> Unit,
     onReadAloud: () -> Unit,
+    onResetOverlayRotation: () -> Unit = {},
     onDeleteOverlay: () -> Unit,
     onOpenAudioVolume: () -> Unit,
     onMoveAudioToPlayhead: () -> Unit,
@@ -212,9 +213,12 @@ fun ClipActionRow(
                     }
                     ActionButton(Icons.Default.FirstPage, "Start here", onClick = onOverlayStartHere)
                     ActionButton(Icons.Default.LastPage, "End here", onClick = onOverlayEndHere)
+                    if (overlay.rotation != 0f) {
+                        ActionButton(Icons.AutoMirrored.Filled.RotateRight, "Straighten", onClick = onResetOverlayRotation)
+                    }
                     ActionButton(Icons.Default.ContentCopy, "Duplicate", onClick = onDuplicateOverlay)
                     ActionButton(Icons.Default.Delete, "Delete", Color(0xFFFF453A), onClick = onDeleteOverlay)
-                    HintLabel("Drag to move, pinch to resize · drag its timeline bar or its ends to retime")
+                    HintLabel("Drag to move, pinch & twist to resize/rotate · drag ends to retime")
                 }
 
                 ToolbarMode.AUDIO -> {
@@ -241,7 +245,7 @@ fun ClipActionRow(
                         onClick = onOpenVoiceEffect
                     )
                     ActionButton(Icons.Default.Delete, "Delete", Color(0xFFFF453A), onClick = onDeleteAudio)
-                    HintLabel("${track.title} · drag its timeline bar to move it")
+                    HintLabel("${track.title} · drag bar to move, drag edges to trim")
                 }
             }
         }

@@ -91,7 +91,8 @@ fun VideoPlayerView(
     onSelectOverlay: (String?) -> Unit,
     onEditOverlay: () -> Unit,
     onUpdateOverlayPosition: (String, Float, Float) -> Unit,
-    onResizeOverlay: (String, Float) -> Unit,
+    onResizeOverlay: (String, Float) -> Unit = { _, _ -> },
+    onTransformOverlay: (String, Float, Float) -> Unit = { id, size, _ -> onResizeOverlay(id, size) },
     onAddClipClicked: () -> Unit,
     onGenerateDemoClipClicked: () -> Unit,
     modifier: Modifier = Modifier
@@ -153,6 +154,7 @@ fun VideoPlayerView(
                     onEditOverlay = onEditOverlay,
                     onUpdatePosition = onUpdateOverlayPosition,
                     onResizeOverlay = onResizeOverlay,
+                    onTransformOverlay = onTransformOverlay,
                     modifier = Modifier.fillMaxSize()
                 )
 

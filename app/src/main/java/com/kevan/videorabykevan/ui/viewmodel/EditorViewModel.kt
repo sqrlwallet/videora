@@ -253,7 +253,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
      */
     private suspend fun importVideos(uris: List<Uri>, context: Context): List<VideoClip> {
         val newClips = mutableListOf<VideoClip>()
-        val projectDir = File(context.filesDir, "projects/${_uiState.value.project.id}/clips")
+        val projectDir = File(ProjectMediaStore.projectDir(context, _uiState.value.project.id), "media")
 
         withContext(Dispatchers.IO) {
             projectDir.mkdirs()
@@ -784,13 +784,36 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** Pinch-to-resize on the video; one undo step per gesture. */
-    fun resizeOverlay(id: String, fontSizeSp: Float) {
+    /** Pinch to resize and rotate on the video; one undo step per gesture. */
+    fun transformOverlay(id: String, fontSizeSp: Float, rotation: Float) {
         val list = _uiState.value.project.textOverlays
         val index = list.indexOfFirst { it.id == id }
-        if (index < 0 || list[index].fontSizeSp == fontSizeSp) return
+        if (index < 0) return
+        val current = list[index]
+        if (current.fontSizeSp == fontSizeSp && current.rotation == rotation) return
         pushUndoState(_uiState.value.project)
-        val updated = list.toMutableList().apply { this[index] = this[index].copy(fontSizeSp = fontSizeSp) }
+        val updated = list.toMutableList().apply {
+            this[index] = current.copy(fontSizeSp = fontSizeSp, rotation = rotation)
+        }
+        _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(textOverlays = updated))
+        persistProject()
+    }
+
+    /** Pinch-to-resize on the video; one undo step per gesture. */
+    fun resizeOverlay(id: String, fontSizeSp: Float) {
+        val currentRot = _uiState.value.project.textOverlays.find { it.id == id }?.rotation ?: 0f
+        transformOverlay(id, fontSizeSp, currentRot)
+    }
+
+    fun resetSelectedOverlayRotation() {
+        val id = _uiState.value.selectedOverlayId ?: return
+        val list = _uiState.value.project.textOverlays
+        val index = list.indexOfFirst { it.id == id }
+        if (index < 0 || list[index].rotation == 0f) return
+        pushUndoState(_uiState.value.project)
+        val updated = list.toMutableList().apply {
+            this[index] = this[index].copy(rotation = 0f)
+        }
         _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(textOverlays = updated))
         persistProject()
     }
@@ -958,6 +981,26 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         if (start == track.timelineStartOffsetMs) return
         if (_uiState.value.selectedAudioTrackId != id) focusAudioTrack(id)
         updateSelectedAudioTrack { it.copy(timelineStartOffsetMs = start) }
+    }
+
+    /** Trimming an audio track by dragging its timeline edges. */
+    fun trimAudioTrack(id: String, startOffsetMs: Long, trimStartMs: Long, trimEndMs: Long) {
+        val tracks = _uiState.value.project.audioTracks
+        val index = tracks.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val original = tracks[index]
+        if (original.timelineStartOffsetMs == startOffsetMs && original.trimStartMs == trimStartMs && original.trimEndMs == trimEndMs) return
+        pushUndoState(_uiState.value.project)
+        val updated = tracks.toMutableList().apply {
+            this[index] = original.copy(
+                timelineStartOffsetMs = startOffsetMs,
+                trimStartMs = trimStartMs,
+                trimEndMs = trimEndMs
+            )
+        }
+        _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(audioTracks = updated))
+        playerManager.setAudioTracks(updated)
+        persistProject()
     }
 
     fun setSelectedAudioVoiceEffect(effect: VoiceEffect) = updateSelectedAudioTrack { it.copy(voiceEffect = effect) }

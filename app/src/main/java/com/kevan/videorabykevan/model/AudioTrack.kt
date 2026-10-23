@@ -2,6 +2,8 @@ package com.kevan.videorabykevan.model
 
 import java.util.UUID
 
+const val MIN_AUDIO_TRIM_MS = 500L
+
 data class AudioTrack(
     val id: String = UUID.randomUUID().toString(),
     val uri: String,
@@ -53,5 +55,30 @@ data class AudioTrack(
             gain = minOf(gain, remaining.coerceAtLeast(0L).toFloat() / fadeOut)
         }
         return gain
+    }
+
+    /**
+     * Trims this track by dragging one of its timeline edges by [timelineDeltaMs].
+     * Dragging the start edge moves when the track starts on the timeline and shifts [trimStartMs]
+     * so playback stays locked to the project time. Dragging the end edge adjusts [trimEndMs].
+     * Keeps at least [MIN_AUDIO_TRIM_MS] of audio.
+     */
+    fun trimmedByDrag(isStartEdge: Boolean, timelineDeltaMs: Long): AudioTrack {
+        val currentEnd = if (trimEndMs > trimStartMs) trimEndMs else if (durationMs > 0L) durationMs else (trimStartMs + 5000L)
+        val maxSource = if (durationMs > 0L) durationMs else (currentEnd + timelineDeltaMs).coerceAtLeast(trimStartMs + MIN_AUDIO_TRIM_MS)
+        val minLength = MIN_AUDIO_TRIM_MS.coerceAtMost(maxSource)
+        return if (isStartEdge) {
+            val targetTrimStart = (trimStartMs + timelineDeltaMs).coerceIn(0L, (currentEnd - minLength).coerceAtLeast(0L))
+            val actualDelta = targetTrimStart - trimStartMs
+            val newTimelineOffset = (timelineStartOffsetMs + actualDelta).coerceAtLeast(0L)
+            copy(
+                timelineStartOffsetMs = newTimelineOffset,
+                trimStartMs = targetTrimStart,
+                trimEndMs = currentEnd
+            )
+        } else {
+            val targetTrimEnd = (currentEnd + timelineDeltaMs).coerceIn((trimStartMs + minLength).coerceAtMost(maxSource), maxSource)
+            copy(trimEndMs = targetTrimEnd)
+        }
     }
 }

@@ -137,6 +137,16 @@ fun ExportDialog(
                                 fontWeight = FontWeight.SemiBold
                             )
 
+                            exportState.projectTitle?.takeIf { it.isNotBlank() }?.let { title ->
+                                Text(
+                                    text = "Project: $title",
+                                    color = GoldChampagne,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+
                             Text(
                                 text = "Encoding on this phone. You can leave the app; it keeps going in the background.",
                                 color = Color.White.copy(alpha = 0.6f),

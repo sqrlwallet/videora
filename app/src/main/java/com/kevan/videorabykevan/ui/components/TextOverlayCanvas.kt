@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -59,40 +60,52 @@ fun TextOverlayCanvas(
     onEditOverlay: () -> Unit,
     onUpdatePosition: (id: String, newX: Float, newY: Float) -> Unit,
     onResizeOverlay: (id: String, fontSizeSp: Float) -> Unit = { _, _ -> },
+    onTransformOverlay: (id: String, fontSizeSp: Float, rotation: Float) -> Unit = { id, size, _ -> onResizeOverlay(id, size) },
     modifier: Modifier = Modifier
 ) {
     val selectedVisible = textOverlays.any { it.id == selectedOverlayId && currentPositionMs in it.startTimeMs..it.endTimeMs }
-    // Live pinch factor for the selected overlay; saved as its font size when the fingers lift
+    // Live pinch factor and rotation for the selected overlay; saved when the fingers lift
     var pinchScale by remember { mutableFloatStateOf(1f) }
+    var pinchRotation by remember { mutableFloatStateOf(0f) }
     var showCenterGuide by remember { mutableStateOf(false) }
     val latestSelected by rememberUpdatedState(textOverlays.find { it.id == selectedOverlayId })
-    val latestOnResize by rememberUpdatedState(onResizeOverlay)
+    val latestOnTransform by rememberUpdatedState(onTransformOverlay)
     val latestOnSelect by rememberUpdatedState(onSelectOverlay)
 
     // Only while a text/sticker is selected and on screen does the canvas take touches itself:
     // otherwise taps fall through to the video (play/pause).
     val selectionGestures = if (selectedVisible) {
         Modifier
-            // Pinch anywhere on the video resizes the selected overlay, so small text is easy to grow
+            // Pinch anywhere on the video resizes and twists to rotate the selected overlay
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
-                    var pinched = false
+                    var transformed = false
                     do {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         if (event.changes.count { it.pressed } >= 2) {
-                            pinched = true
+                            transformed = true
                             pinchScale *= event.calculateZoom()
+                            pinchRotation += event.calculateRotation()
                             // Consuming stops the overlay drag and the tap underneath
                             event.changes.forEach { it.consume() }
                         }
                     } while (event.changes.any { it.pressed })
-                    if (pinched) {
+                    if (transformed) {
                         latestSelected?.let { overlay ->
                             val newSize = (overlay.fontSizeSp * pinchScale).coerceIn(MIN_FONT_SIZE_SP, MAX_FONT_SIZE_SP)
-                            latestOnResize(overlay.id, newSize)
+                            var newRotation = (overlay.rotation + pinchRotation) % 360f
+                            if (newRotation > 180f) newRotation -= 360f
+                            if (newRotation < -180f) newRotation += 360f
+                            // Magnetic snap to cardinal angles (-180, -90, 0, 90, 180)
+                            val snapAngle = listOf(0f, 90f, -90f, 180f, -180f).firstOrNull { abs(it - newRotation) < 4f }
+                            if (snapAngle != null) {
+                                newRotation = if (snapAngle == -180f) 180f else snapAngle
+                            }
+                            latestOnTransform(overlay.id, newSize, newRotation)
                         }
                         pinchScale = 1f
+                        pinchRotation = 0f
                     }
                 }
             }
@@ -130,6 +143,7 @@ fun TextOverlayCanvas(
                     // The selected overlay holds still so it can always be seen and dragged
                     animationFrame = if (overlay.id == selectedOverlayId) TextAnimationFrame.STATIC else overlay.animationFrameAt(currentPositionMs),
                     sizeScale = if (overlay.id == selectedOverlayId) pinchScale else 1f,
+                    liveRotation = if (overlay.id == selectedOverlayId) pinchRotation else 0f,
                     onSnapChanged = { showCenterGuide = it },
                     onSelect = { onSelectOverlay(overlay.id) },
                     onEdit = onEditOverlay,
@@ -151,6 +165,7 @@ private fun DraggableTextItem(
     isSelected: Boolean,
     animationFrame: TextAnimationFrame,
     sizeScale: Float,
+    liveRotation: Float = 0f,
     onSnapChanged: (Boolean) -> Unit,
     onSelect: () -> Unit,
     onEdit: () -> Unit,
@@ -193,6 +208,7 @@ private fun DraggableTextItem(
                 scaleX = animationFrame.scale
                 scaleY = animationFrame.scale
                 translationY = animationFrame.offsetY * canvasHeightPx
+                rotationZ = overlay.rotation + liveRotation
             }
             // Restarted when a move is saved so the gesture works on the fresh position state
             .pointerInput(overlay.id, overlay.posX, overlay.posY, canvasWidthPx, canvasHeightPx) {

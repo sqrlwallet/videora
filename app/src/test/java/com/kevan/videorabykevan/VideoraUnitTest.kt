@@ -7,6 +7,7 @@ import com.kevan.videorabykevan.data.StillVideoEncoder
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.AudioTrack
 import com.kevan.videorabykevan.model.ExportPreset
+import com.kevan.videorabykevan.model.MIN_AUDIO_TRIM_MS
 import com.kevan.videorabykevan.model.MIN_TRIM_MS
 import com.kevan.videorabykevan.model.Project
 import com.kevan.videorabykevan.model.SafeZoneType
@@ -396,5 +397,56 @@ class VideoraUnitTest {
         assertEquals(VoiceEffect.NONE, project.clips.single().voiceEffect)
         assertEquals(VoiceEffect.NONE, project.audioTracks.single().voiceEffect)
         assertFalse(project.duckMusicUnderVoice)
+    }
+
+    @Test
+    fun testAudioTrackTrimByDrag() {
+        val track = AudioTrack(
+            uri = "file:///a.mp3",
+            durationMs = 10_000L,
+            trimStartMs = 1000L,
+            trimEndMs = 9000L,
+            timelineStartOffsetMs = 2000L
+        )
+
+        // Drag start edge forward by 1000ms: trimStart increases to 2000, timeline offset increases to 3000
+        val trimmedStartForward = track.trimmedByDrag(isStartEdge = true, timelineDeltaMs = 1000L)
+        assertEquals(2000L, trimmedStartForward.trimStartMs)
+        assertEquals(3000L, trimmedStartForward.timelineStartOffsetMs)
+        assertEquals(9000L, trimmedStartForward.trimEndMs)
+
+        // Drag start edge backward by 5000ms: clamped to 0, timeline offset decreases by 1000 to 1000
+        val trimmedStartBack = track.trimmedByDrag(isStartEdge = true, timelineDeltaMs = -5000L)
+        assertEquals(0L, trimmedStartBack.trimStartMs)
+        assertEquals(1000L, trimmedStartBack.timelineStartOffsetMs)
+
+        // Drag end edge backward by 2000ms: trimEnd becomes 7000, timelineStartOffset stays 2000
+        val trimmedEndBack = track.trimmedByDrag(isStartEdge = false, timelineDeltaMs = -2000L)
+        assertEquals(7000L, trimmedEndBack.trimEndMs)
+        assertEquals(2000L, trimmedEndBack.timelineStartOffsetMs)
+
+        // Drag end edge forward by 5000ms: clamped to durationMs (10_000)
+        val trimmedEndForward = track.trimmedByDrag(isStartEdge = false, timelineDeltaMs = 5000L)
+        assertEquals(10_000L, trimmedEndForward.trimEndMs)
+
+        // Squeeze start edge past end edge: retains at least MIN_AUDIO_TRIM_MS
+        val squeezed = track.trimmedByDrag(isStartEdge = true, timelineDeltaMs = 60_000L)
+        assertEquals(9000L - MIN_AUDIO_TRIM_MS, squeezed.trimStartMs)
+    }
+
+    @Test
+    fun testTextOverlayRotationPersistence() {
+        val overlay = TextOverlay(text = "Rotated", rotation = 45f)
+        assertEquals(45f, overlay.rotation, 0.001f)
+
+        // Old JSON without rotation decodes with 0f default
+        val oldJson = """[{"id":"p1","textOverlays":[{"id":"t1","text":"Flat"}]}]"""
+        val project = ProjectJson.decode(oldJson).single()
+        assertEquals(0f, project.textOverlays.single().rotation, 0.001f)
+
+        // Saving and restoring preserves rotation
+        val fullJson = """[{"id":"p2","textOverlays":[{"id":"t2","text":"Tilted","rotation":-30.5}]}]"""
+        val decoded = ProjectJson.decode(fullJson).single()
+        assertEquals(-30.5f, decoded.textOverlays.single().rotation, 0.001f)
     }
 }

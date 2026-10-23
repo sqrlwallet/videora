@@ -367,6 +367,7 @@ fun EditorScreen(
                 onEditOverlay = { viewModel.setShowTextEditorSheet(true) },
                 onUpdateOverlayPosition = { id, x, y -> viewModel.updateOverlayPosition(id, x, y) },
                 onResizeOverlay = { id, size -> viewModel.resizeOverlay(id, size) },
+                onTransformOverlay = { id, size, rot -> viewModel.transformOverlay(id, size, rot) },
                 onAddClipClicked = {
                     videoPickerLauncher.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
@@ -409,6 +410,7 @@ fun EditorScreen(
                 onMoveOverlay = { id, start -> viewModel.moveOverlayInTime(id, start) },
                 onMoveAudioTrack = { id, start -> viewModel.moveAudioTrackInTime(id, start) },
                 onSetOverlayTiming = { id, start, end -> viewModel.setOverlayTiming(id, start, end) },
+                onTrimAudioTrack = { id, offset, trimStart, trimEnd -> viewModel.trimAudioTrack(id, offset, trimStart, trimEnd) },
                 onMoveClip = { from, to -> viewModel.moveClip(from, to) }
             )
 
@@ -458,6 +460,7 @@ fun EditorScreen(
                 onOverlayEndHere = { viewModel.setSelectedOverlayEndToPlayhead() },
                 onDuplicateOverlay = { viewModel.duplicateSelectedOverlay() },
                 onReadAloud = { viewModel.readSelectedOverlayAloud() },
+                onResetOverlayRotation = { viewModel.resetSelectedOverlayRotation() },
                 onDeleteOverlay = { selectedTextOverlay?.let { viewModel.deleteTextOverlay(it.id) } },
                 onOpenAudioVolume = { viewModel.setShowVolumeSheet(true) },
                 onMoveAudioToPlayhead = { viewModel.moveSelectedAudioToPlayhead() },
