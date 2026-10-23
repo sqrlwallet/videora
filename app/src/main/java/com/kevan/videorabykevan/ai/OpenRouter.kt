@@ -1,5 +1,6 @@
 package com.kevan.videorabykevan.ai
 
+import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -9,7 +10,8 @@ import com.google.gson.JsonParser
 
 /** What a feature needs from a model; the settings screen keeps one model per task. */
 enum class AiTask(val title: String, val description: String, val requiredInput: String) {
-    TEXT("Text model", "Hooks, post captions and hashtags", "text"),
+    TEXT("Text model", "Hooks, post captions, rewriting and translating text", "text"),
+    VISION("Vision model", "Auto color and ideas from your video's frames", "image"),
     AUDIO("Audio model", "Transcribing speech for auto-captions", "audio");
 
     // An OpenRouter alias that tracks the current Gemini Flash, which takes text and audio,
@@ -51,6 +53,20 @@ sealed class AiError(message: String) : Exception(message) {
     class BadResponse : AiError("OpenRouter sent a response Videora couldn't read.")
 }
 
+/** One part of a chat message: text, a JPEG frame or a WAV clip, both base64. */
+sealed class AiContent {
+    data class Text(val text: String) : AiContent()
+    data class ImageJpeg(val base64: String) : AiContent()
+    data class AudioWav(val base64: String) : AiContent()
+}
+
+data class AiMessage(val role: String, val content: List<AiContent>) {
+    companion object {
+        fun system(text: String) = AiMessage("system", listOf(AiContent.Text(text)))
+        fun user(vararg content: AiContent) = AiMessage("user", content.toList())
+    }
+}
+
 /** The client the AI features call; the AI edition implements it over HTTPS. */
 interface AiClient {
     /** Checks the saved key and reads its credit. */
@@ -58,6 +74,12 @@ interface AiClient {
 
     /** Every model OpenRouter offers (public list; no key needed). */
     suspend fun models(): List<AiModel>
+
+    /** The model the user picked for [task] (shown before anything is sent). */
+    fun modelFor(task: AiTask): String
+
+    /** Sends [messages] to the model for [task] and returns the reply text. */
+    suspend fun chat(task: AiTask, messages: List<AiMessage>, maxTokens: Int = 1500): String
 }
 
 object OpenRouterJson {
@@ -97,6 +119,73 @@ object OpenRouterJson {
         models
             .filter { task.requiredInput in it.inputModalities && !it.id.endsWith(":batch") }
             .sortedWith(compareBy(nullsLast()) { it.promptPricePerToken })
+
+    /**
+     * Chat completion request body. Content is always sent as a parts array (text, image_url with
+     * a data URL, input_audio) because that's the shape every multimodal model accepts.
+     */
+    fun chatRequest(model: String, messages: List<AiMessage>, maxTokens: Int): String {
+        val body = JsonObject()
+        body.addProperty("model", model)
+        body.addProperty("max_tokens", maxTokens)
+        val array = JsonArray()
+        for (message in messages) {
+            val parts = JsonArray()
+            for (content in message.content) {
+                parts.add(
+                    JsonObject().apply {
+                        when (content) {
+                            is AiContent.Text -> {
+                                addProperty("type", "text")
+                                addProperty("text", content.text)
+                            }
+                            is AiContent.ImageJpeg -> {
+                                addProperty("type", "image_url")
+                                add("image_url", JsonObject().apply { addProperty("url", "data:image/jpeg;base64,${content.base64}") })
+                            }
+                            is AiContent.AudioWav -> {
+                                addProperty("type", "input_audio")
+                                add(
+                                    "input_audio",
+                                    JsonObject().apply {
+                                        addProperty("data", content.base64)
+                                        addProperty("format", "wav")
+                                    }
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+            array.add(
+                JsonObject().apply {
+                    addProperty("role", message.role)
+                    add("content", parts)
+                }
+            )
+        }
+        body.add("messages", array)
+        return body.toString()
+    }
+
+    /** The assistant's text from a chat completion (content may be a string or a parts array). */
+    fun parseChatReply(body: String): String {
+        val root = parseObject(body)
+        // Some providers report failures inside a 200 response
+        root.obj("error")?.string("message")?.let { throw AiError.Server(200, it) }
+        val message = root.get("choices")?.takeIf { it.isJsonArray }?.asJsonArray
+            ?.firstOrNull()?.takeIf { it.isJsonObject }?.asJsonObject?.obj("message")
+            ?: throw AiError.BadResponse()
+        val content = message.get("content") ?: throw AiError.BadResponse()
+        val text = when {
+            content.isJsonPrimitive -> content.asString
+            content.isJsonArray -> content.asJsonArray.mapNotNull {
+                it.takeIf { part -> part.isJsonObject }?.asJsonObject?.string("text")
+            }.joinToString("")
+            else -> null
+        }
+        return text?.takeIf { it.isNotBlank() } ?: throw AiError.BadResponse()
+    }
 
     /** Maps a failed HTTP response to the error the user sees. */
     fun errorFor(code: Int, body: String?, retryAfterHeader: String?): AiError {

@@ -6,6 +6,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kevan.videorabykevan.ai.ColorSuggestion
 import com.kevan.videorabykevan.data.BuiltInAudioHelper
 import com.kevan.videorabykevan.data.ProjectMediaStore
 import com.kevan.videorabykevan.data.ProjectRepository
@@ -26,7 +27,9 @@ import com.kevan.videorabykevan.model.PHOTO_DEFAULT_MS
 import com.kevan.videorabykevan.model.STILL_SOURCE_MS
 import com.kevan.videorabykevan.model.Project
 import com.kevan.videorabykevan.model.SafeZoneType
+import com.kevan.videorabykevan.model.TextAnimation
 import com.kevan.videorabykevan.model.TextOverlay
+import com.kevan.videorabykevan.model.TextStylePreset
 import com.kevan.videorabykevan.model.VideoClip
 import com.kevan.videorabykevan.model.VideoFilter
 import com.kevan.videorabykevan.model.VoiceEffect
@@ -66,6 +69,7 @@ data class EditorUiState(
     val showAdjustSheet: Boolean = false,
     val showFadeSheet: Boolean = false,
     val showVoiceEffectSheet: Boolean = false,
+    val showAiToolsSheet: Boolean = false,
     val isComparingOriginal: Boolean = false
 )
 
@@ -1082,6 +1086,69 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         persistProject()
     }
 
+    // AI results (AI edition): applied only when the user taps one, each as a single undo step
+
+    fun addHookText(text: String) {
+        val total = _uiState.value.project.totalDurationMs
+        addOrUpdateTextOverlay(
+            TextOverlay(
+                text = text,
+                style = TextStylePreset.VIRAL_HOOK,
+                posY = 0.22f,
+                startTimeMs = 0L,
+                endTimeMs = minOf(3000L, total).coerceAtLeast(MIN_OVERLAY_MS),
+                animation = TextAnimation.POP
+            )
+        )
+        showMessage("Hook added", offerUndo = true)
+    }
+
+    /** Adds AI-made text (captions or a story); [replaceAutoCaptions] removes earlier auto-captions first. */
+    fun addAiOverlays(overlays: List<TextOverlay>, replaceAutoCaptions: Boolean, message: String) {
+        if (overlays.isEmpty()) return
+        pushUndoState(_uiState.value.project)
+        val kept = _uiState.value.project.textOverlays.filterNot { replaceAutoCaptions && it.isAutoCaption }
+        _uiState.value = _uiState.value.copy(
+            project = _uiState.value.project.copy(textOverlays = kept + overlays),
+            selectedOverlayId = null
+        )
+        persistProject()
+        showMessage(message, offerUndo = true)
+    }
+
+    /** Applies translations (overlay id to new text) in one step. */
+    fun setOverlayTexts(texts: List<Pair<String, String>>) {
+        val byId = texts.toMap()
+        if (byId.isEmpty()) return
+        pushUndoState(_uiState.value.project)
+        val updated = _uiState.value.project.textOverlays.map { o -> byId[o.id]?.let { o.copy(text = it) } ?: o }
+        _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(textOverlays = updated))
+        persistProject()
+        showMessage("Translated ${byId.size} text${if (byId.size == 1) "" else "s"}", offerUndo = true)
+    }
+
+    fun setSelectedOverlayText(text: String) = updateSelectedOverlay { it.copy(text = text) }
+
+    fun applyColorSuggestion(suggestion: ColorSuggestion, toAllClips: Boolean) {
+        val index = _uiState.value.selectedClipIndex
+        val clips = _uiState.value.project.clips
+        if (index !in clips.indices) return
+        pushUndoState(_uiState.value.project)
+        val updated = clips.mapIndexed { i, clip -> if (toAllClips || i == index) suggestion.applyTo(clip) else clip }
+        _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(clips = updated))
+        persistProject()
+        showMessage(if (toAllClips) "AI color applied to all clips" else "AI color applied", offerUndo = true)
+    }
+
+    fun renameProject(title: String) {
+        val trimmed = title.trim()
+        if (trimmed.isEmpty() || trimmed == _uiState.value.project.title) return
+        pushUndoState(_uiState.value.project)
+        _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(title = trimmed))
+        persistProject()
+        showMessage("Renamed to \"$trimmed\"", offerUndo = true)
+    }
+
     fun pause() {
         playerManager.pause()
     }
@@ -1122,6 +1189,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun setShowAdjustSheet(show: Boolean) = _uiState.update { it.copy(showAdjustSheet = show) }
     fun setShowFadeSheet(show: Boolean) = _uiState.update { it.copy(showFadeSheet = show) }
     fun setShowVoiceEffectSheet(show: Boolean) = _uiState.update { it.copy(showVoiceEffectSheet = show) }
+    fun setShowAiToolsSheet(show: Boolean) = _uiState.update { it.copy(showAiToolsSheet = show) }
 
     private inline fun MutableStateFlow<EditorUiState>.update(function: (EditorUiState) -> EditorUiState) {
         value = function(value)

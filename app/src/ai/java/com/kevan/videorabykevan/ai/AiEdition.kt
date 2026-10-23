@@ -8,8 +8,10 @@ object AiEdition {
     const val isAvailable: Boolean = true
 
     /** Null until the user has saved a key, so features can prompt them to add one. */
-    fun client(context: Context): AiClient? =
-        ApiKeyStore(context).load()?.let { key -> OpenRouterClient(apiKey = key) }
+    fun client(context: Context): AiClient? {
+        val store = ApiKeyStore(context)
+        return store.load()?.let { key -> OpenRouterClient(apiKey = key, models = store::modelFor) }
+    }
 
     @Composable
     fun SettingsScreen(onBack: () -> Unit) = AiSettingsScreen(onBack = onBack)

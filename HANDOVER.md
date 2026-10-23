@@ -1,7 +1,7 @@
 # Videora: Agent Handover
 
 Context for an agent continuing work on this repo. Read this before changing code.
-Last updated 2026-10-23, on `main`: v1.4.0 release (editing UX, TikTok/Instagram parity, AI Phase 1).
+Last updated 2026-10-23, on `main`: v1.5.0 release (AI tools in the ai edition).
 
 ## 1. What the app is
 
@@ -20,7 +20,7 @@ About 9k lines of Kotlin in a single `app` module.
 | Media3 | **1.5.1** (pinned; see gotchas) |
 | Images | Coil 2.7.0 (+ `coil-video` for frame thumbnails) |
 | Persistence | Gson 2.11.0, one JSON file |
-| Version | `versionName 1.4.0`, `versionCode 9` (released 2026-10-23 as `videora-v1.4.0.apk` + `videora-ai-v1.4.0.apk`) |
+| Version | `versionName 1.5.0`, `versionCode 10` (released 2026-10-23 as `videora-v1.5.0.apk` + `videora-ai-v1.5.0.apk`) |
 | Build flavors | `offline` (default, no INTERNET) and `ai` (versionName suffix `-ai`, same applicationId) |
 | Remote | `https://github.com/sqrlwallet/videora` |
 
@@ -81,12 +81,18 @@ engine/
   ClipColorMatrix      SINGLE source of truth for clip color (filter + correction)
   TextOverlayRenderer  OverlayMetrics (shared sizing) + BitmapOverlay that draws text for export
 ai/                     (package com.kevan.videorabykevan.ai, split across source sets)
-  src/main     OpenRouter.kt  AiTask, AiKeyInfo, AiModel, AiError, AiClient interface,
-                              OpenRouterJson (parsing + HTTP error mapping), AiKeyFormat. Pure Kotlin.
+  src/main     OpenRouter.kt  AiTask (TEXT, VISION, AUDIO), AiKeyInfo, AiModel, AiError, AiContent/AiMessage,
+                              AiClient (keyInfo, models, modelFor, chat), OpenRouterJson (chat request
+                              body, reply + error parsing), AiKeyFormat. Pure Kotlin.
+               AiPrompts.kt   every tool's prompt + lenient JSON reply parsing, caption timing
+                              (speechPieces, mapToTimeline, captionOverlays), story layout. Pure, tested.
+               AiMedia.kt     on-device prep only: 512 px JPEG frames, decode audio to 16 kHz mono WAV
+               (ui) AiToolsViewModel + AiToolsSheet  the tools; EditorViewModel applies results
   src/offline  AiEdition      stub: isAvailable = false, client() = null, empty SettingsScreen
   src/ai       AiEdition      isAvailable = true, client() = OpenRouterClient when a key is saved
                ApiKeyStore    Keystore AES-GCM encrypted key + per-task model IDs in prefs "videora_ai"
-               OpenRouterClient  HttpURLConnection (no new deps); GET /key, GET /models
+               OpenRouterClient  HttpURLConnection (no new deps); GET /key, GET /models,
+                                 POST /chat/completions (120 s read timeout)
                AiSettingsScreen / AiSettingsViewModel  key paste/check/remove, model picker
                AndroidManifest.xml  adds INTERNET (merged only into the ai edition)
 ui/
@@ -205,6 +211,19 @@ ui/
    ramps around voiceover spans (`model/AudioDucking.kt`): the preview multiplies it into the track
    volume each sync tick, the export passes the spans to `FadeAudioProcessor`.
 
+14. **AI tools** (ai edition; `AiToolsSheet`, opened from the project toolbar's "AI Tools", the clip
+   toolbar's "AI Color" and the text toolbar's "AI Rewrite"): auto captions, hook ideas, text story,
+   rewrite (punchier/shorter/fix/emojis/translate), translate all text, auto color, post caption +
+   hashtags (copy), name project. Rules kept: each tool states what it sends and to which model
+   before its button is tapped; results are listed and only applied on tap, as one undo step via
+   EditorViewModel (`addHookText`, `addAiOverlays`, `setOverlayTexts`, `applyColorSuggestion`,
+   `renameProject`, `setSelectedOverlayText`). Replies are requested as plain JSON in the prompt,
+   not `response_format` (OpenRouter fails the request on models without structured outputs), and
+   parsed leniently (`AiPrompts.extractJson`). Auto captions decode each clip's / voiceover's own
+   audio (60 s pieces, 10 min cap, muted clips/photos/music skipped) to 16 kHz mono WAV, send it as
+   `input_audio`, and map segment times to the timeline through trim and speed
+   (`mapToTimeline`); they're flagged `TextOverlay.isAutoCaption` so a re-run replaces them.
+
 ### Releasing
 Build each edition's release (see section 2), then copy
 `app/build/outputs/apk/offline/release/app-offline-release.apk` to `videora-v<version>.apk` and
@@ -268,6 +287,12 @@ areas most likely to fail:
 - **Reorder auto-scroll (new):** hold a lifted clip near the strip's edge; the timeline should scroll
   and the clip stay under the finger.
 - **Demo clip encoder:** now assigns its own frame timestamps and drains until end of stream.
+- **AI tools (new, ai edition):** none has been run against OpenRouter. Check with a real key:
+  that `~google/gemini-flash-latest` accepts `input_audio` WAV and returns usable segment times
+  (captions are only as good as these), image parts for Auto color / hooks with frames, the JSON
+  parsing on real replies, error messages (no credits, rate limit), Cancel mid-request, and how long
+  a 1-minute transcription takes against the 120 s read timeout. `AiMedia.decodeSpeechPcm` (MediaCodec)
+  is also unverified: check AAC and Opus sources and a voiceover recording.
 - **Noir B&W** now uses the luma-based grayscale from the shared matrix, so it looks slightly
   different from older exports.
 
@@ -281,18 +306,11 @@ High value:
    Media3 upgrade.
 3. ~~Photo/image clips~~ (done; decision 12). Next for slideshows: an optional slow zoom (Ken Burns)
    per photo, which could be baked in at encode time.
-4. **AI features (ai edition), in phases.** Phase 1 is done (released in v1.4.0): editions, key storage,
-   key check, model picker. Next:
-   - **Phase 2, hooks and post captions (text only):** add `chat()` to `AiClient`
-     (POST `/api/v1/chat/completions`, `response_format` JSON); "Generate hooks" returns ~5 options
-     that become a VIRAL_HOOK `TextOverlay`; a post caption + hashtags with a copy button after export.
-   - **Phase 3, auto-captions:** extract project audio (audio-only Transformer export), chunk long
-     videos, send to POST `/api/v1/audio/transcriptions` (fallback: `input_audio` in chat), map
-     segment timestamps from source time to timeline time (trim, speed, muted clips) as pure, tested
-     Kotlin, then add caption overlays. First prototype whether the chosen models return per-segment
-     timestamps; captions can't be timed without them. Show an estimated cost before sending.
-   - **Phase 4, frame-based suggestions:** a few frames to a vision model for suggested color
-     settings (clamped to the existing -1..1 controls) or a cover frame.
+4. **AI features (ai edition).** Phase 1 (v1.4.0): editions, key storage, key check, model picker.
+   Phases 2–4 shipped in v1.5.0 (decision 14) but were **never run against OpenRouter**: no key or device here.
+   Next: verify each tool live (see section 4), then a cost estimate before sending (needs the
+   model's price, i.e. a `GET /models` call the user agrees to), a cover-frame picker, and
+   word-by-word animated captions.
 5. ~~Audio fades~~ (done; decision 9). ~~Ducking~~ (done; decision 13).
 6. ~~Background export~~ (done; decision 7). Home shows a progress banner. Another project's
    editor still opens the shared export dialog showing that progress, which is acceptable but could

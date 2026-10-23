@@ -95,7 +95,9 @@ data class TextOverlay(
     val startTimeMs: Long = 0L,
     val endTimeMs: Long = 5000L,
     val isSticker: Boolean = false,
-    val animation: TextAnimation = TextAnimation.NONE
+    val animation: TextAnimation = TextAnimation.NONE,
+    // Made by AI auto-captions; re-running them replaces these
+    val isAutoCaption: Boolean = false
 ) {
     /** How the overlay looks [timeMs] into the timeline; same values drive the preview and the export. */
     fun animationFrameAt(timeMs: Long): TextAnimationFrame {

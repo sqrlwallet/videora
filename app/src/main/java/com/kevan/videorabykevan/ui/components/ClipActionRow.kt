@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.AddReaction
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
@@ -68,6 +69,7 @@ import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
 import com.kevan.videorabykevan.ui.theme.GoldChampagne
 import com.kevan.videorabykevan.ui.theme.HyperCyan
 import com.kevan.videorabykevan.ui.theme.NeonCoral
+import com.kevan.videorabykevan.ui.viewmodel.AiTool
 
 /**
  * Context-aware editing toolbar (CapCut / Reels style):
@@ -118,6 +120,8 @@ fun ClipActionRow(
     onOpenAudioFades: () -> Unit,
     onOpenVoiceEffect: () -> Unit,
     onDeleteAudio: () -> Unit,
+    // AI edition only (null hides the AI buttons)
+    onOpenAi: ((AiTool?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val mode = when {
@@ -140,6 +144,9 @@ fun ClipActionRow(
             when (currentMode) {
                 ToolbarMode.PROJECT -> {
                     ActionButton(Icons.Default.AddCircle, "Add Media", GoldChampagne, onClick = onAddClip)
+                    if (onOpenAi != null) {
+                        ActionButton(Icons.Default.AutoAwesome, "AI Tools", GoldChampagne, onClick = { onOpenAi(null) })
+                    }
                     ActionButton(Icons.Default.TextFields, "Text/Hook", AccentCyan, onClick = onOpenText)
                     ActionButton(Icons.Default.AddReaction, "Stickers", Color(0xFFFFDE03), onClick = onOpenStickers)
                     ActionButton(Icons.Default.MusicNote, "Audio/SFX", onClick = onOpenAudio)
@@ -174,6 +181,9 @@ fun ClipActionRow(
                     }
                     ActionButton(Icons.Default.FilterAlt, "Filters", AccentPink, onClick = onOpenFilters)
                     ActionButton(Icons.Default.Tune, "Color", AccentCyan, onClick = onOpenAdjust)
+                    if (onOpenAi != null) {
+                        ActionButton(Icons.Default.AutoAwesome, "AI Color", GoldChampagne, onClick = { onOpenAi(AiTool.COLOR) })
+                    }
                     ActionButton(Icons.Default.Flip, "Mirror", onClick = onToggleFlip)
                     ActionButton(Icons.AutoMirrored.Filled.RotateRight, "Rotate", onClick = onRotate90)
                     ActionButton(
@@ -196,6 +206,9 @@ fun ClipActionRow(
                     ActionButton(Icons.Default.Edit, "Edit", AccentCyan, onClick = onEditOverlay)
                     if (!overlay.isSticker) {
                         ActionButton(Icons.Default.RecordVoiceOver, "Read aloud", AccentPink, onClick = onReadAloud)
+                        if (onOpenAi != null) {
+                            ActionButton(Icons.Default.AutoAwesome, "AI Rewrite", GoldChampagne, onClick = { onOpenAi(AiTool.REWRITE) })
+                        }
                     }
                     ActionButton(Icons.Default.FirstPage, "Start here", onClick = onOverlayStartHere)
                     ActionButton(Icons.Default.LastPage, "End here", onClick = onOverlayEndHere)

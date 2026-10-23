@@ -67,8 +67,12 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kevan.videorabykevan.ai.AiEdition
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.ui.components.AdjustSheet
+import com.kevan.videorabykevan.ui.components.AiToolActions
+import com.kevan.videorabykevan.ui.components.AiToolsSheet
 import com.kevan.videorabykevan.ui.components.AudioSheet
 import com.kevan.videorabykevan.ui.components.ClipActionRow
 import com.kevan.videorabykevan.ui.components.ExportDialog
@@ -91,6 +95,8 @@ import com.kevan.videorabykevan.ui.theme.DarkCard
 import com.kevan.videorabykevan.ui.theme.DarkSurfaceVariant
 import com.kevan.videorabykevan.ui.theme.GoldChampagne
 import com.kevan.videorabykevan.ui.theme.GoldMetallic
+import com.kevan.videorabykevan.ui.viewmodel.AiTool
+import com.kevan.videorabykevan.ui.viewmodel.AiToolsViewModel
 import com.kevan.videorabykevan.ui.viewmodel.EditorViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -106,6 +112,15 @@ fun EditorScreen(
     val exportState by viewModel.exportState.collectAsState()
 
     var showAspectMenu by remember { mutableStateOf(false) }
+
+    // AI edition only; one per project so results never leak between projects
+    val aiTools: AiToolsViewModel = viewModel(key = "ai-$projectId")
+    val aiState by aiTools.state.collectAsState()
+    val openAi: ((AiTool?) -> Unit)? = if (AiEdition.isAvailable) { tool ->
+        viewModel.pause()
+        aiTools.open(tool)
+        viewModel.setShowAiToolsSheet(true)
+    } else null
 
     // Media Picker for videos and photos (photos become still clips)
     val videoPickerLauncher = rememberLauncherForActivityResult(
@@ -450,7 +465,8 @@ fun EditorScreen(
                 onToggleAudioLoop = { viewModel.toggleSelectedAudioLoop() },
                 onOpenAudioFades = { viewModel.setShowFadeSheet(true) },
                 onOpenVoiceEffect = { viewModel.setShowVoiceEffectSheet(true) },
-                onDeleteAudio = { viewModel.deleteSelectedAudioTrack() }
+                onDeleteAudio = { viewModel.deleteSelectedAudioTrack() },
+                onOpenAi = openAi
             )
         }
 
@@ -604,6 +620,50 @@ fun EditorScreen(
                 onDismiss = {
                     viewModel.setShowExportDialog(false)
                     viewModel.resetExportState()
+                }
+            )
+        }
+
+        if (uiState.showAiToolsSheet) {
+            val project = uiState.project
+            AiToolsSheet(
+                state = aiState,
+                project = project,
+                selectedClip = selectedClip,
+                selectedOverlay = selectedTextOverlay,
+                modelFor = { aiTools.modelFor(it) },
+                captionSeconds = remember(project.clips, project.audioTracks) { aiTools.captionAudioSeconds(project) },
+                translatableCount = aiTools.translatableTexts(project).size,
+                storyLineCount = aiTools.storyLineCount(project),
+                onOpenTool = { aiTools.open(it) },
+                onTopicChange = { aiTools.setTopic(it) },
+                onLanguageChange = { aiTools.setLanguage(it) },
+                onUseFramesChange = { aiTools.setUseFrames(it) },
+                onRewriteStyleChange = { aiTools.setRewriteStyle(it) },
+                onRun = { tool ->
+                    when (tool) {
+                        AiTool.CAPTIONS -> aiTools.captions(project)
+                        AiTool.HOOKS -> aiTools.hooks(project)
+                        AiTool.STORY -> aiTools.story(project)
+                        AiTool.REWRITE -> selectedTextOverlay?.let { aiTools.rewrite(it.text) }
+                        AiTool.TRANSLATE -> aiTools.translateAll(project)
+                        AiTool.COLOR -> selectedClip?.let { aiTools.color(it) }
+                        AiTool.POST -> aiTools.postCaption(project)
+                        AiTool.TITLE -> aiTools.titles(project)
+                    }
+                },
+                onCancel = { aiTools.cancel() },
+                actions = AiToolActions(
+                    onAddHook = { viewModel.addHookText(it) },
+                    onAddOverlays = { overlays, replace, message -> viewModel.addAiOverlays(overlays, replace, message) },
+                    onSetTexts = { viewModel.setOverlayTexts(it) },
+                    onSetSelectedText = { viewModel.setSelectedOverlayText(it) },
+                    onApplyColor = { color, toAll -> viewModel.applyColorSuggestion(color, toAll) },
+                    onRename = { viewModel.renameProject(it) }
+                ),
+                onDismiss = {
+                    aiTools.cancel()
+                    viewModel.setShowAiToolsSheet(false)
                 }
             )
         }
