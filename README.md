@@ -14,7 +14,8 @@ Download the signed, installable APK from the [Latest GitHub Release](https://gi
 
 | Release | Version | Size | Highlights |
 | :--- | :--- | :--- | :--- |
-| **Latest** | **v1.4.0** | **3.7 MB** (AI edition 3.8 MB) | Photos & freeze frames, text animations, Read aloud (text-to-speech), voice effects, music ducking, drag-to-trim / reorder / retime on the timeline, pinch-to-resize text |
+| **Latest** | **v1.5.0** | **3.7 MB** (AI edition 3.7 MB) | AI edition: auto captions, hook ideas, text story, rewrite & translate text, auto color, post caption & hashtags, project names |
+| Previous | v1.4.0 | 3.7 MB (AI edition 3.8 MB) | Photos & freeze frames, text animations, Read aloud (text-to-speech), voice effects, music ducking, drag-to-trim / reorder / retime on the timeline, pinch-to-resize text |
 | Previous | v1.3.0 | 3.7 MB | Background export with notification, audio fade in/out, color correction, full-fidelity export (text, speed, volume, rotation) |
 | Previous | v1.2.3 | 3.6 MB | Layout constraint fix (bounded timeline height, 9:16 viewport restoration), legacy URI auto-caching |
 | Previous | v1.2.2 | 3.6 MB | TextureView preview fix, NLE scrollable filmstrip, video thumbnails, fit/fill toggle, 77% size reduction |
@@ -97,7 +98,8 @@ A separate `ai` build adds AI features powered by your own [OpenRouter](https://
 - Paste your key in **AI settings** (✨ on the home screen). It's encrypted on the phone, excluded from backups, and you can check its remaining credit there.
 - Choose the model for each feature. The default tracks the latest Gemini Flash.
 - Nothing is sent until you tap an AI action, and usage is billed to your own OpenRouter account.
-- Coming next: AI hook and caption ideas, then auto-captions from your clips' speech.
+- **AI Tools** in the editor: auto captions from speech, hook ideas, a text story, rewrite or translate text, auto color for a clip, post caption & hashtags, and project names.
+- Each tool says what it sends before you tap it, and nothing changes your video until you pick a result (one tap to undo).
 
 ### 🔒 9. 100% Local & Privacy-First
 - **No Sign-ups**: Never asks for an email, password, phone number, or login.
