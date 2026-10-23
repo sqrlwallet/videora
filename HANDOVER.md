@@ -1,7 +1,7 @@
 # Videora: Agent Handover
 
 Context for an agent continuing work on this repo. Read this before changing code.
-Last updated 2026-10-23, on `main`: v1.5.1 release (home and AI settings cleanup; AI tools since v1.5.0).
+Last updated 2026-10-23, on `main`: v1.6.0 release (direct-manipulation audio trimming, fade ramps, text rotation).
 
 ## 1. What the app is
 
@@ -20,7 +20,7 @@ About 9k lines of Kotlin in a single `app` module.
 | Media3 | **1.5.1** (pinned; see gotchas) |
 | Images | Coil 2.7.0 (+ `coil-video` for frame thumbnails) |
 | Persistence | Gson 2.11.0, one JSON file |
-| Version | `versionName 1.5.1`, `versionCode 11` (released 2026-10-23 as `videora-v1.5.1.apk` + `videora-ai-v1.5.1.apk`) |
+| Version | `versionName 1.6.0`, `versionCode 12` (released 2026-10-23 as `videora-v1.6.0.apk` + `videora-ai-v1.6.0.apk`) |
 | Build flavors | `offline` (default, no INTERNET) and `ai` (versionName suffix `-ai`, same applicationId) |
 | Remote | `https://github.com/sqrlwallet/videora` |
 
