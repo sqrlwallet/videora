@@ -10,6 +10,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.kevan.videorabykevan.model.AudioTrack
 import com.kevan.videorabykevan.model.VideoClip
+import com.kevan.videorabykevan.model.duckGainAt
+import com.kevan.videorabykevan.model.voiceoverSpans
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -166,7 +168,8 @@ class VideoPlayerManager(
     }
 
     private fun applyClipParameters(clip: VideoClip) {
-        exoPlayer.playbackParameters = PlaybackParameters(clip.speed)
+        // Pitch carries the clip's voice effect; speed keeps pitch on its own (Sonic), like the export
+        exoPlayer.playbackParameters = PlaybackParameters(clip.speed, clip.voiceEffect.pitch)
         exoPlayer.volume = if (clip.isMuted) 0f else clip.volume
     }
 
@@ -178,6 +181,14 @@ class VideoPlayerManager(
     private class AudioTrackPlayer(val track: AudioTrack, val player: ExoPlayer)
 
     private var audioPlayers: List<AudioTrackPlayer> = emptyList()
+    private var duckMusic = false
+
+    /** Music / SFX dip under voiceovers while this is on (Project.duckMusicUnderVoice). */
+    fun setDucking(enabled: Boolean) {
+        if (duckMusic == enabled) return
+        duckMusic = enabled
+        syncAudioTracks()
+    }
 
     fun setAudioTracks(tracks: List<AudioTrack>) {
         if (tracks == audioPlayers.map { it.track }) return
@@ -190,6 +201,7 @@ class VideoPlayerManager(
                 existing.track.trimEndMs == track.trimEndMs && existing.track.isLooping == track.isLooping
             ) {
                 existing.player.volume = track.volume.coerceIn(0f, 1f)
+                existing.player.playbackParameters = PlaybackParameters(1f, track.voiceEffect.pitch)
                 AudioTrackPlayer(track, existing.player)
             } else {
                 existing?.player?.release()
@@ -216,6 +228,7 @@ class VideoPlayerManager(
         player.setMediaItem(builder.build())
         player.repeatMode = if (track.isLooping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         player.volume = track.volume.coerceIn(0f, 1f)
+        player.playbackParameters = PlaybackParameters(1f, track.voiceEffect.pitch)
         player.prepare()
         return player
     }
@@ -228,6 +241,7 @@ class VideoPlayerManager(
         if (audioPlayers.isEmpty()) return
         val timelineMs = _playerState.value.currentPositionMs
         val mainPlaying = exoPlayer.isPlaying
+        val duckSpans = if (duckMusic) voiceoverSpans(audioPlayers.map { it.track }, _playerState.value.totalDurationMs) else emptyList()
 
         for (entry in audioPlayers) {
             val player = entry.player
@@ -244,7 +258,9 @@ class VideoPlayerManager(
 
             // Volume follows the fade ramps; the export applies the same gains (AudioTrack.fadeGainAt)
             val trackLengthMs = entry.track.timelineLengthMs(_playerState.value.totalDurationMs)
-            player.volume = entry.track.volume.coerceIn(0f, 1f) * entry.track.fadeGainAt(offsetMs, trackLengthMs)
+            // Ducking also matches the export (duckGainAt)
+            val duck = if (entry.track.isVoiceover) 1f else duckGainAt(timelineMs, duckSpans)
+            player.volume = entry.track.volume.coerceIn(0f, 1f) * entry.track.fadeGainAt(offsetMs, trackLengthMs) * duck
 
             val targetMs = if (entry.track.isLooping && lengthMs != null) offsetMs % lengthMs else offsetMs
             if (forceSeek || abs(player.currentPosition - targetMs) > AUDIO_DRIFT_TOLERANCE_MS) {

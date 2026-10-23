@@ -3,15 +3,23 @@ package com.kevan.videorabykevan
 import com.google.gson.Gson
 import com.kevan.videorabykevan.data.BuiltInAudioHelper
 import com.kevan.videorabykevan.data.ProjectJson
+import com.kevan.videorabykevan.data.StillVideoEncoder
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.AudioTrack
 import com.kevan.videorabykevan.model.ExportPreset
+import com.kevan.videorabykevan.model.MIN_TRIM_MS
 import com.kevan.videorabykevan.model.Project
 import com.kevan.videorabykevan.model.SafeZoneType
+import com.kevan.videorabykevan.model.TextAnimation
 import com.kevan.videorabykevan.model.TextOverlay
 import com.kevan.videorabykevan.model.TextStylePreset
 import com.kevan.videorabykevan.model.VideoClip
 import com.kevan.videorabykevan.model.VideoFilter
+import com.kevan.videorabykevan.model.VoiceEffect
+import com.kevan.videorabykevan.model.DUCK_LEVEL
+import com.kevan.videorabykevan.model.DUCK_RAMP_MS
+import com.kevan.videorabykevan.model.duckGainAt
+import com.kevan.videorabykevan.model.voiceoverSpans
 import com.kevan.videorabykevan.ui.viewmodel.splitPartName
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -223,7 +231,8 @@ class VideoraUnitTest {
     fun testLegacyClipJsonHasNoColorAdjustments() {
         // Shape of a clip saved before color adjustments existed
         val legacyJson = """{"id":"c1","uri":"file:///clip.mp4","name":"Clip","durationMs":4000,"trimStartMs":0,"trimEndMs":4000,"speed":1.0,"volume":1.0,"isMuted":false,"filter":"NONE","rotationDegrees":0,"isFlippedHorizontal":false}"""
-        val clip = Gson().fromJson(legacyJson, VideoClip::class.java)
+        // Decoded the way the app loads projects (raw Gson would leave newer enum fields null)
+        val clip = ProjectJson.decode("""[{"id":"p1","clips":[$legacyJson]}]""").single().clips.single()
         assertEquals(0f, clip.brightness, 0f)
         assertEquals(0f, clip.saturation, 0f)
         assertFalse(clip.hasColorAdjustments)
@@ -297,5 +306,95 @@ class VideoraUnitTest {
         assertEquals(0L, track.fadeInMs)
         assertEquals(0L, track.fadeOutMs)
         assertFalse(track.hasFades)
+    }
+
+    @Test
+    fun testTrimByDragRespectsSpeedAndBounds() {
+        val clip = VideoClip(uri = "file:///c.mp4", durationMs = 10_000L, trimStartMs = 1000L, trimEndMs = 9000L, speed = 2f)
+        // One timeline second at 2x is two source seconds
+        assertEquals(3000L, clip.trimmedByDrag(isStartEdge = true, timelineDeltaMs = 1000L).trimStartMs)
+        assertEquals(7000L, clip.trimmedByDrag(isStartEdge = false, timelineDeltaMs = -1000L).trimEndMs)
+        // Can't extend past the source
+        assertEquals(0L, clip.trimmedByDrag(isStartEdge = true, timelineDeltaMs = -5000L).trimStartMs)
+        assertEquals(10_000L, clip.trimmedByDrag(isStartEdge = false, timelineDeltaMs = 5000L).trimEndMs)
+        // Edges never cross; at least MIN_TRIM_MS of source stays
+        val squeezed = clip.trimmedByDrag(isStartEdge = true, timelineDeltaMs = 60_000L)
+        assertEquals(9000L - MIN_TRIM_MS, squeezed.trimStartMs)
+        assertEquals(1000L + MIN_TRIM_MS, clip.trimmedByDrag(isStartEdge = false, timelineDeltaMs = -60_000L).trimEndMs)
+    }
+
+    @Test
+    fun testTextAnimationFrames() {
+        val base = TextOverlay(text = "Hello", startTimeMs = 1000L, endTimeMs = 4000L)
+        // No animation, or outside the overlay: drawn as-is
+        assertTrue(base.animationFrameAt(2000L).isStatic)
+        assertTrue(base.copy(animation = TextAnimation.FADE).animationFrameAt(500L).isStatic)
+
+        val fade = base.copy(animation = TextAnimation.FADE)
+        assertEquals(0f, fade.animationFrameAt(1000L).alpha, 0.001f)
+        assertEquals(1f, fade.animationFrameAt(2500L).alpha, 0.001f)
+        assertEquals(0f, fade.animationFrameAt(4000L).alpha, 0.001f)
+
+        val pop = base.copy(animation = TextAnimation.POP)
+        assertEquals(1f, pop.animationFrameAt(2500L).scale, 0.001f)
+        assertTrue(pop.animationFrameAt(1000L).scale < 1f)
+
+        val slide = base.copy(animation = TextAnimation.SLIDE_UP)
+        assertTrue(slide.animationFrameAt(1000L).offsetY > 0f)
+        assertEquals(0f, slide.animationFrameAt(2500L).offsetY, 0.001f)
+
+        val typewriter = base.copy(animation = TextAnimation.TYPEWRITER)
+        assertEquals(0, typewriter.animationFrameAt(1000L).visibleChars)
+        assertEquals(5, typewriter.animationFrameAt(3000L).visibleChars)
+    }
+
+    @Test
+    fun testOldTextOverlayDecodesWithoutAnimation() {
+        val json = """[{"id":"p1","textOverlays":[{"id":"t1","text":"Hi"}]},{"id":"p2","textOverlays":[{"id":"t2","animation":"SPIN"}]}]"""
+        val projects = ProjectJson.decode(json)
+        assertEquals(TextAnimation.NONE, projects[0].textOverlays.single().animation)
+        // Unknown values from a newer version fall back instead of crashing
+        assertEquals(TextAnimation.NONE, projects[1].textOverlays.single().animation)
+    }
+
+    @Test
+    fun testStillVideoSizeKeepsAspectAndAlignment() {
+        // A 12 MP portrait photo is capped at 1920 on the long side
+        assertEquals(1440 to 1920, StillVideoEncoder.encodedSize(3024, 4032))
+        // Small frames aren't upscaled; odd sizes are rounded to multiples of 16
+        assertEquals(720 to 1280, StillVideoEncoder.encodedSize(720, 1280))
+        val (w, h) = StillVideoEncoder.encodedSize(1001, 333)
+        assertEquals(0, w % 16)
+        assertEquals(0, h % 16)
+    }
+
+    @Test
+    fun testOldClipDecodesAsVideo() {
+        val json = """[{"id":"p1","clips":[{"id":"c1","uri":"file:///c.mp4","durationMs":4000}]}]"""
+        assertFalse(ProjectJson.decode(json).single().clips.single().isPhoto)
+    }
+
+    @Test
+    fun testDuckingRampsAroundVoiceovers() {
+        val music = AudioTrack(uri = "file:///m.mp3", durationMs = 20_000L, trimEndMs = 20_000L)
+        val voice = AudioTrack(uri = "file:///v.m4a", durationMs = 2_000L, trimEndMs = 2_000L, timelineStartOffsetMs = 3_000L, isVoiceover = true)
+        val spans = voiceoverSpans(listOf(music, voice), 10_000L)
+        assertEquals(listOf(3_000L until 5_000L), spans)
+        // Full volume away from the voice, ducked during it, halfway down the ramp just before it
+        assertEquals(1f, duckGainAt(1_000L, spans), 0.001f)
+        assertEquals(DUCK_LEVEL, duckGainAt(4_000L, spans), 0.001f)
+        assertEquals(1f - (1f - DUCK_LEVEL) * 0.5f, duckGainAt(3_000L - DUCK_RAMP_MS / 2, spans), 0.01f)
+        assertEquals(1f, duckGainAt(6_000L, spans), 0.001f)
+        // A muted voiceover doesn't duck anything
+        assertTrue(voiceoverSpans(listOf(voice.copy(volume = 0f)), 10_000L).isEmpty())
+    }
+
+    @Test
+    fun testOldProjectDecodesWithoutVoiceEffectsOrDucking() {
+        val json = """[{"id":"p1","clips":[{"id":"c1","uri":"file:///c.mp4"}],"audioTracks":[{"id":"a1","uri":"file:///m.mp3","voiceEffect":"ROBOT"}]}]"""
+        val project = ProjectJson.decode(json).single()
+        assertEquals(VoiceEffect.NONE, project.clips.single().voiceEffect)
+        assertEquals(VoiceEffect.NONE, project.audioTracks.single().voiceEffect)
+        assertFalse(project.duckMusicUnderVoice)
     }
 }

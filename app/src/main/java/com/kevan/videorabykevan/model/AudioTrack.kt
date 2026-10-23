@@ -15,7 +15,8 @@ data class AudioTrack(
     val isVoiceover: Boolean = false,
     // Linear ramps at the track's start / end on the timeline; 0 = none
     val fadeInMs: Long = 0L,
-    val fadeOutMs: Long = 0L
+    val fadeOutMs: Long = 0L,
+    val voiceEffect: VoiceEffect = VoiceEffect.NONE
 ) {
     val effectiveDurationMs: Long
         get() = (trimEndMs - trimStartMs).coerceAtLeast(0L)

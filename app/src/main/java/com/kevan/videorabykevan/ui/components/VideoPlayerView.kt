@@ -91,6 +91,7 @@ fun VideoPlayerView(
     onSelectOverlay: (String?) -> Unit,
     onEditOverlay: () -> Unit,
     onUpdateOverlayPosition: (String, Float, Float) -> Unit,
+    onResizeOverlay: (String, Float) -> Unit,
     onAddClipClicked: () -> Unit,
     onGenerateDemoClipClicked: () -> Unit,
     modifier: Modifier = Modifier
@@ -151,6 +152,7 @@ fun VideoPlayerView(
                     onSelectOverlay = onSelectOverlay,
                     onEditOverlay = onEditOverlay,
                     onUpdatePosition = onUpdateOverlayPosition,
+                    onResizeOverlay = onResizeOverlay,
                     modifier = Modifier.fillMaxSize()
                 )
 
@@ -274,7 +276,7 @@ fun VideoPlayerView(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Add Video Clips", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Add Videos or Photos", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))

@@ -1,7 +1,7 @@
 # Videora: Agent Handover
 
 Context for an agent continuing work on this repo. Read this before changing code.
-Last updated 2026-10-22, on `main`: v1.3.0 release plus AI Phase 1 (not released yet).
+Last updated 2026-10-23, on `main`: v1.4.0 release (editing UX, TikTok/Instagram parity, AI Phase 1).
 
 ## 1. What the app is
 
@@ -20,7 +20,7 @@ About 9k lines of Kotlin in a single `app` module.
 | Media3 | **1.5.1** (pinned; see gotchas) |
 | Images | Coil 2.7.0 (+ `coil-video` for frame thumbnails) |
 | Persistence | Gson 2.11.0, one JSON file |
-| Version | `versionName 1.3.0`, `versionCode 8` (released 2026-10-22 as `videora-v1.3.0.apk`) |
+| Version | `versionName 1.4.0`, `versionCode 9` (released 2026-10-23 as `videora-v1.4.0.apk` + `videora-ai-v1.4.0.apk`) |
 | Build flavors | `offline` (default, no INTERNET) and `ai` (versionName suffix `-ai`, same applicationId) |
 | Remote | `https://github.com/sqrlwallet/videora` |
 
@@ -62,12 +62,15 @@ model/        Pure data classes, all Gson-serialized
                      color correction: exposure, brightness, contrast, temperature, tint, saturation, hue (-1..1)
   AudioTrack         uri, timelineStartOffsetMs, trimStart/End, volume, isLooping, isVoiceover,
                      fadeInMs/fadeOutMs; timelineLengthMs() + fadeGainAt() = shared fade math
-  TextOverlay        text, style, size, colors, posX/posY (= CENTER, normalized), start/end ms, isSticker
+  TextOverlay        text, style, size, colors, posX/posY (= CENTER, normalized), start/end ms, isSticker,
+                     animation (TextAnimation); animationFrameAt(ms) = shared animation math
   ExportPreset       resolution class, fps, bitrates; outputSizeFor(aspectRatio)
 data/
   ProjectRepository  JSON file storage (atomic, mutex-serialized); ProjectJson = defensive decoder
   ProjectMediaStore  per-project media folder: filesDir/projects/<id>/media
   BuiltInAudioHelper, VoiceRecorderHelper, SampleMediaHelper (synthesized SFX, mic, demo clip)
+  StillVideoEncoder  photo / freeze frame -> silent 10 s H.264 MP4 (MediaCodec surface + MediaMuxer)
+  TextToSpeechHelper "Read aloud": device TTS engine -> WAV in the cache (engine is a system service)
 engine/
   VideoPlayerManager   ExoPlayer playlist of clips + one ExoPlayer per audio track, kept in sync
   VideoExportManager   Process-wide singleton (getInstance). Builds a Media3 Composition and exports
@@ -182,6 +185,26 @@ ui/
      (`AiSettingsViewModel` has a keep rule because the ViewModel factory creates it reflectively.)
    - The key is excluded from backups (`res/xml/backup_rules.xml`, `data_extraction_rules.xml`).
 
+11. **Text animations** (Fade, Pop, Slide up, Typewriter) follow "preview must match export" through
+   `TextOverlay.animationFrameAt`. The preview applies it with `graphicsLayer` (the *selected* overlay
+   is drawn static so it can be dragged); the export's `TextOverlayBitmapOverlay` keeps its per-set cache
+   for static frames and redraws one reused bitmap while anything is animating (Media3 1.5.1
+   re-uploads when `Bitmap.generationId` changes; checked with javap).
+
+12. **Photos and freeze frames are encoded to video on import** (`StillVideoEncoder`, 10 fps,
+   `STILL_SOURCE_MS` = 10 s, shown 3 s / 2 s by default via the trim) and flagged `VideoClip.isPhoto`.
+   This deliberately avoids ExoPlayer's image renderer: PlayerView 1.5.1 shows images in its own
+   ImageView, which would miss the TextureView color/mirror/rotation look, and mixing image and video
+   items in one Transformer sequence is untested here. A photo is just a silent clip to every engine.
+   The encoder assigns output timestamps itself (one frame apart); `SampleMediaHelper` now does too.
+
+13. **Voice effects and ducking** follow "preview must match export" too. `VoiceEffect.pitch` goes to
+   `PlaybackParameters(speed, pitch)` in the preview (main player for clips, each track's player for
+   tracks) and to `SonicAudioProcessor.setPitch` in the export (combined with the speed Sonic for clips).
+   `Project.duckMusicUnderVoice` dips every non-voiceover track to `DUCK_LEVEL` with `DUCK_RAMP_MS`
+   ramps around voiceover spans (`model/AudioDucking.kt`): the preview multiplies it into the track
+   volume each sync tick, the export passes the spans to `FadeAudioProcessor`.
+
 ### Releasing
 Build each edition's release (see section 2), then copy
 `app/build/outputs/apk/offline/release/app-offline-release.apk` to `videora-v<version>.apk` and
@@ -222,6 +245,29 @@ areas most likely to fail:
 - **Home export banner (new):** appears on Home while exporting; its Cancel stops the export.
 - **Audio sheet (new):** now lists every track; tapping a row closes the sheet and selects that
   track (its timeline audio toolbar should appear).
+- **Direct-manipulation editing (new):** dragging the selected clip's gold edges trims it
+  (`VideoClip.trimmedByDrag`, live preview in `TimelineView`, saved on release); dragging a
+  *selected* text or audio chip moves it in time, snapping to the playhead, cuts and 0:00 with a haptic tick;
+  pinching anywhere on the video resizes the selected text/sticker; dragged text snaps to the
+  vertical center line; tapping empty video deselects the overlay (it then no longer toggles play).
+  Check the drags don't fight the timeline scroll, and that a clip tap no longer moves the playhead
+  when it is already inside the clip (so Split cuts where the user aimed). Text moves are now undoable.
+- **TikTok/Instagram parity round (new):** text animations in preview and export; "Read aloud"
+  (text-to-speech into a voiceover track; needs the manifest `<queries>` for `TTS_SERVICE` on API 30+;
+  the engine's WAV sample rate differs from other audio, so check the export mixes it cleanly);
+  long-press a clip and drag to reorder (gold drop marker; no auto-scroll at the strip's edges);
+  drag the edge handles of a selected text chip to change its timing; "Replace" keeps a clip's edits
+  and timeline length.
+- **Photos and freeze frames (new):** "Add Media" picks photos and videos; check EXIF rotation on
+  both API < 28 (BitmapFactory + ExifInterface) and 28+ (ImageDecoder), the encoder on a real device
+  (timing, 10 s length, no green/garbled frames), and that Freeze grabs the frame under the playhead
+  the right way up (MediaMetadataRetriever applies the video's rotation) and keeps the clip's look.
+- **Voice effects and ducking (new):** listen to a pitched clip at 2x speed (one Sonic does both) and
+  a pitched voiceover in the export vs the preview; check ducking around a voiceover in both, and
+  that the preview's ~33 ms volume steps don't sound zippery.
+- **Reorder auto-scroll (new):** hold a lifted clip near the strip's edge; the timeline should scroll
+  and the clip stay under the finger.
+- **Demo clip encoder:** now assigns its own frame timestamps and drains until end of stream.
 - **Noir B&W** now uses the luma-based grayscale from the shared matrix, so it looks slightly
   different from older exports.
 
@@ -233,9 +279,9 @@ High value:
 2. **Transitions between clips** (crossfade / slide). Not possible inside a single
    `EditedMediaItemSequence` in Media3 1.5.1. Needs a second video sequence and compositor, or a
    Media3 upgrade.
-3. **Photo/image clips** (slideshows). Transformer supports images (`setDurationUs` + `setFrameRate`).
-   The preview needs ExoPlayer image support or a placeholder.
-4. **AI features (ai edition), in phases.** Phase 1 is done (on `main`, unreleased): editions, key storage,
+3. ~~Photo/image clips~~ (done; decision 12). Next for slideshows: an optional slow zoom (Ken Burns)
+   per photo, which could be baked in at encode time.
+4. **AI features (ai edition), in phases.** Phase 1 is done (released in v1.4.0): editions, key storage,
    key check, model picker. Next:
    - **Phase 2, hooks and post captions (text only):** add `chat()` to `AiClient`
      (POST `/api/v1/chat/completions`, `response_format` JSON); "Generate hooks" returns ~5 options
@@ -247,17 +293,19 @@ High value:
      timestamps; captions can't be timed without them. Show an estimated cost before sending.
    - **Phase 4, frame-based suggestions:** a few frames to a vision model for suggested color
      settings (clamped to the existing -1..1 controls) or a cover frame.
-5. ~~Audio fades~~ (done; decision 9). **Ducking** under voiceover is next: it can reuse
-   `FadeAudioProcessor`'s approach, with gain computed from the voiceover tracks' spans.
+5. ~~Audio fades~~ (done; decision 9). ~~Ducking~~ (done; decision 13).
 6. ~~Background export~~ (done; decision 7). Home shows a progress banner. Another project's
    editor still opens the shared export dialog showing that progress, which is acceptable but could
    say which project it belongs to (`ExportProgressState.projectTitle` is available).
 
 Medium:
 - Draw fade ramps on the timeline's audio chips.
-- Trimming audio tracks and text directly on the timeline (dragging chip edges), and dragging
-  chips to move them in time.
-- Pinch/rotate text and stickers on the canvas (sizes are only set through the sheet today).
+- Trimming audio tracks on the timeline (dragging chip edges; text chips already have this).
+- Rotating text and stickers on the canvas (pinch-to-resize is done).
+- TikTok/Instagram features not yet here: reverse
+  (needs a re-encode), non-pitch voice effects (robot, echo: need a custom AudioProcessor in the
+  export and a preview RenderersFactory), clip opacity/overlay (picture-in-picture), keyframes,
+  green screen/cutout (segmentation model), beat marks, auto-captions (backlog item 4, Phase 3).
 - Highlights/shadows/vibrance. These are non-linear, so they don't fit the matrix. Options are a
   3D LUT (`SingleColorLut`) for the export, plus a matching preview path.
 - A blurred background for Fit mode instead of black bars.

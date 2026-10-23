@@ -82,6 +82,7 @@ import com.kevan.videorabykevan.ui.components.TextEditorSheet
 import com.kevan.videorabykevan.ui.components.TimelineView
 import com.kevan.videorabykevan.ui.components.TrimSheet
 import com.kevan.videorabykevan.ui.components.VideoPlayerView
+import com.kevan.videorabykevan.ui.components.VoiceEffectSheet
 import com.kevan.videorabykevan.ui.components.VoiceoverSheet
 import com.kevan.videorabykevan.ui.components.VolumeSheet
 import com.kevan.videorabykevan.ui.theme.AccentCyan
@@ -106,12 +107,21 @@ fun EditorScreen(
 
     var showAspectMenu by remember { mutableStateOf(false) }
 
-    // Media Picker for videos
+    // Media Picker for videos and photos (photos become still clips)
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
         if (uris.isNotEmpty()) {
             viewModel.addVideoUris(uris, context)
+        }
+    }
+
+    // Picker for "Replace": swaps the selected clip's video but keeps its edits
+    val replacePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.replaceSelectedClip(uri, context)
         }
     }
 
@@ -342,9 +352,10 @@ fun EditorScreen(
                 onSelectOverlay = { viewModel.selectOverlay(it) },
                 onEditOverlay = { viewModel.setShowTextEditorSheet(true) },
                 onUpdateOverlayPosition = { id, x, y -> viewModel.updateOverlayPosition(id, x, y) },
+                onResizeOverlay = { id, size -> viewModel.resizeOverlay(id, size) },
                 onAddClipClicked = {
                     videoPickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
                     )
                 },
                 onGenerateDemoClipClicked = {
@@ -370,7 +381,7 @@ fun EditorScreen(
                 onSplitCurrentClip = { viewModel.splitClipAtCurrentPlayhead() },
                 onAddClipClicked = {
                     videoPickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
                     )
                 },
                 audioTracks = uiState.project.audioTracks,
@@ -379,7 +390,12 @@ fun EditorScreen(
                 onSelectOverlay = { viewModel.selectOverlayFromTimeline(it) },
                 selectedAudioTrackId = uiState.selectedAudioTrackId,
                 onSelectAudioTrack = { viewModel.selectAudioTrack(it) },
-                onScrubStarted = { viewModel.pause() }
+                onScrubStarted = { viewModel.pause() },
+                onTrimSelectedClip = { start, end -> viewModel.trimSelectedClip(start, end) },
+                onMoveOverlay = { id, start -> viewModel.moveOverlayInTime(id, start) },
+                onMoveAudioTrack = { id, start -> viewModel.moveAudioTrackInTime(id, start) },
+                onSetOverlayTiming = { id, start, end -> viewModel.setOverlayTiming(id, start, end) },
+                onMoveClip = { from, to -> viewModel.moveClip(from, to) }
             )
 
             // Bottom Editing Toolbar (switches between project, clip and text/sticker tools)
@@ -392,7 +408,7 @@ fun EditorScreen(
                 onClearSelection = { viewModel.clearSelection() },
                 onAddClip = {
                     videoPickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
                     )
                 },
                 onOpenText = {
@@ -405,6 +421,7 @@ fun EditorScreen(
                 onOpenVoiceover = { viewModel.setShowVoiceoverSheet(true) },
                 onOpenSafeZones = { viewModel.setShowSafeZoneSheet(true) },
                 onSplitClip = { viewModel.splitClipAtCurrentPlayhead() },
+                onFreezeFrame = { viewModel.freezeFrameAtPlayhead() },
                 onOpenTrim = { viewModel.setShowTrimSheet(true) },
                 onOpenSpeed = { viewModel.setShowSpeedSheet(true) },
                 onOpenVolume = { viewModel.setShowVolumeSheet(true) },
@@ -416,16 +433,23 @@ fun EditorScreen(
                 onRotate90 = { viewModel.rotateClip90(uiState.selectedClipIndex) },
                 onToggleMute = { viewModel.toggleSelectedClipMute() },
                 onDuplicateClip = { viewModel.duplicateSelectedClip() },
+                onReplaceClip = {
+                    replacePickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                    )
+                },
                 onDeleteClip = { viewModel.deleteSelectedClip() },
                 onEditOverlay = { viewModel.setShowTextEditorSheet(true) },
                 onOverlayStartHere = { viewModel.setSelectedOverlayStartToPlayhead() },
                 onOverlayEndHere = { viewModel.setSelectedOverlayEndToPlayhead() },
                 onDuplicateOverlay = { viewModel.duplicateSelectedOverlay() },
+                onReadAloud = { viewModel.readSelectedOverlayAloud() },
                 onDeleteOverlay = { selectedTextOverlay?.let { viewModel.deleteTextOverlay(it.id) } },
                 onOpenAudioVolume = { viewModel.setShowVolumeSheet(true) },
                 onMoveAudioToPlayhead = { viewModel.moveSelectedAudioToPlayhead() },
                 onToggleAudioLoop = { viewModel.toggleSelectedAudioLoop() },
                 onOpenAudioFades = { viewModel.setShowFadeSheet(true) },
+                onOpenVoiceEffect = { viewModel.setShowVoiceEffectSheet(true) },
                 onDeleteAudio = { viewModel.deleteSelectedAudioTrack() }
             )
         }
@@ -470,6 +494,22 @@ fun EditorScreen(
                 track = selectedAudioTrack,
                 onDismiss = { viewModel.setShowFadeSheet(false) },
                 onSetFades = { fadeIn, fadeOut -> viewModel.setSelectedAudioFades(fadeIn, fadeOut) }
+            )
+        }
+
+        if (uiState.showVoiceEffectSheet && selectedAudioTrack != null) {
+            VoiceEffectSheet(
+                title = "🎙️ Voice Effect · ${selectedAudioTrack.title}",
+                current = selectedAudioTrack.voiceEffect,
+                onDismiss = { viewModel.setShowVoiceEffectSheet(false) },
+                onSelect = { viewModel.setSelectedAudioVoiceEffect(it) }
+            )
+        } else if (uiState.showVoiceEffectSheet && selectedClip != null) {
+            VoiceEffectSheet(
+                title = "🎙️ Voice Effect · Clip",
+                current = selectedClip.voiceEffect,
+                onDismiss = { viewModel.setShowVoiceEffectSheet(false) },
+                onSelect = { viewModel.setSelectedClipVoiceEffect(it) }
             )
         }
 
@@ -526,6 +566,8 @@ fun EditorScreen(
                 onOpenVoiceover = { viewModel.setShowVoiceoverSheet(true) },
                 onAddSoundEffect = { viewModel.addBuiltInSoundEffect(it, context) },
                 onToggleMuteOriginalAudio = { viewModel.toggleMuteAllClips() },
+                duckMusicUnderVoice = uiState.project.duckMusicUnderVoice,
+                onToggleDucking = { viewModel.toggleDuckMusicUnderVoice() },
                 onSelectAudioTrack = { viewModel.focusAudioTrack(it) },
                 onRemoveAudioTrack = { viewModel.deleteAudioTrack(it) }
             )

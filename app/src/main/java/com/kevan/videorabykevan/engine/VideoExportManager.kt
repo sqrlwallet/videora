@@ -37,6 +37,7 @@ import com.kevan.videorabykevan.model.AudioTrack
 import com.kevan.videorabykevan.model.ExportPreset
 import com.kevan.videorabykevan.model.Project
 import com.kevan.videorabykevan.model.VideoClip
+import com.kevan.videorabykevan.model.voiceoverSpans
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -192,8 +193,9 @@ class VideoExportManager private constructor(private val context: Context) {
 
         // Each music / voiceover / SFX track becomes its own audio-only sequence that the mixer
         // blends with the clips' original audio.
+        val duckSpans = if (project.duckMusicUnderVoice) voiceoverSpans(project.audioTracks, project.totalDurationMs) else emptyList()
         val audioSequences = project.audioTracks.mapNotNull {
-            buildAudioSequence(it, project.totalDurationMs)
+            buildAudioSequence(it, project.totalDurationMs, if (it.isVoiceover) emptyList() else duckSpans)
         }
 
         val compositionVideoEffects = mutableListOf<Effect>()
@@ -216,7 +218,7 @@ class VideoExportManager private constructor(private val context: Context) {
             .build()
     }
 
-    private fun buildAudioSequence(track: AudioTrack, projectDurationMs: Long): EditedMediaItemSequence? {
+    private fun buildAudioSequence(track: AudioTrack, projectDurationMs: Long, duckSpans: List<LongRange>): EditedMediaItemSequence? {
         val startOffsetMs = track.timelineStartOffsetMs.coerceAtLeast(0L)
         val availableMs = projectDurationMs - startOffsetMs
         if (availableMs <= 0L || track.volume <= 0f) return null
@@ -230,12 +232,14 @@ class VideoExportManager private constructor(private val context: Context) {
         do {
             // Unknown source length: play once from the trim start, cut off at the end of the video
             val segmentMs = knownLengthMs?.let { minOf(it, remainingMs) } ?: remainingMs
-            val audioProcessor = if (track.hasFades) {
-                FadeAudioProcessor(track, track.volume.coerceIn(0f, 1f), availableMs - remainingMs, trackLengthMs)
+            val gainProcessor = if (track.hasFades || duckSpans.isNotEmpty()) {
+                FadeAudioProcessor(track, track.volume.coerceIn(0f, 1f), availableMs - remainingMs, trackLengthMs, duckSpans)
             } else {
                 volumeProcessor(track.volume)
             }
-            items += buildAudioItem(track, trimStartMs, trimStartMs + segmentMs, audioProcessor)
+            // Voice effect first: a pitch shift keeps the timing, so the gain math still lines up
+            val processors = listOfNotNull(pitchProcessor(track.voiceEffect.pitch), gainProcessor)
+            items += buildAudioItem(track, trimStartMs, trimStartMs + segmentMs, processors)
             remainingMs -= segmentMs
         } while (track.isLooping && knownLengthMs != null && remainingMs > 0L)
 
@@ -246,7 +250,7 @@ class VideoExportManager private constructor(private val context: Context) {
         return builder.addItems(items).build()
     }
 
-    private fun buildAudioItem(track: AudioTrack, startMs: Long, endMs: Long, audioProcessor: AudioProcessor?): EditedMediaItem {
+    private fun buildAudioItem(track: AudioTrack, startMs: Long, endMs: Long, audioProcessors: List<AudioProcessor>): EditedMediaItem {
         val mediaItem = MediaItem.Builder()
             .setUri(Uri.parse(track.uri))
             .setClippingConfiguration(
@@ -259,7 +263,7 @@ class VideoExportManager private constructor(private val context: Context) {
 
         return EditedMediaItem.Builder(mediaItem)
             .setRemoveVideo(true)
-            .setEffects(Effects(listOfNotNull(audioProcessor), emptyList()))
+            .setEffects(Effects(audioProcessors, emptyList()))
             .build()
     }
 
@@ -282,12 +286,15 @@ class VideoExportManager private constructor(private val context: Context) {
         val effectsList = mutableListOf<Effect>()
         val audioProcessors = mutableListOf<AudioProcessor>()
 
-        // Speed: retime video frames and time-stretch audio without changing pitch (same as preview)
-        if (clip.speed > 0.05f && clip.speed != 1.0f) {
+        // Speed: retime video frames and time-stretch audio; pitch only moves with a voice effect (same as preview)
+        val hasSpeedChange = clip.speed > 0.05f && clip.speed != 1.0f
+        if (hasSpeedChange) {
             effectsList.add(SpeedChangeEffect(clip.speed))
+        }
+        if (hasSpeedChange || clip.voiceEffect.pitch != 1.0f) {
             audioProcessors.add(SonicAudioProcessor().apply {
-                setSpeed(clip.speed)
-                setPitch(1.0f)
+                setSpeed(if (hasSpeedChange) clip.speed else 1.0f)
+                setPitch(clip.voiceEffect.pitch)
             })
         }
 
@@ -321,6 +328,10 @@ class VideoExportManager private constructor(private val context: Context) {
             .setRemoveAudio(clip.isMuted)
             .build()
     }
+
+    /** Sonic pitch shift for a voice effect; null for the original voice. */
+    private fun pitchProcessor(pitch: Float): AudioProcessor? =
+        if (pitch == 1.0f) null else SonicAudioProcessor().apply { setPitch(pitch) }
 
     /**
      * Scales PCM samples by [requested]; null when no change is needed. Capped at 100% because the

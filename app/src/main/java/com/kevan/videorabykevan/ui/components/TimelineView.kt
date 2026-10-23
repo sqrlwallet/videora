@@ -9,8 +9,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -59,19 +61,24 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.decode.VideoFrameDecoder
@@ -95,6 +102,7 @@ import com.kevan.videorabykevan.ui.theme.RoyalAmethyst
 import com.kevan.videorabykevan.ui.theme.TextPrimary
 import com.kevan.videorabykevan.ui.theme.TextSecondary
 import com.kevan.videorabykevan.ui.theme.TextTertiary
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
@@ -104,6 +112,31 @@ private const val MAX_DP_PER_SECOND = 240f
 private val RULER_LABEL_STEPS = listOf(1, 2, 5, 10, 15, 30, 60)
 private const val TRACK_HEIGHT_DP = 24
 private const val MIN_CHIP_WIDTH_DP = 28
+// A dragged chip snaps to the playhead, a cut or 0:00 when it gets this close
+private const val SNAP_DISTANCE_DP = 10f
+
+// Shortest a text chip can be resized to (same as the editor's minimum overlay length)
+private const val MIN_TEXT_CHIP_MS = 300L
+
+/** Which end of a text chip is being dragged; none means the whole chip moves. */
+private enum class ChipEdge { START, END }
+
+/** A text/sticker or audio chip being moved (or, with [edge], resized) along the timeline. */
+private data class ChipDrag(
+    val id: String,
+    val edge: ChipEdge?,
+    val originalStartMs: Long,
+    val originalEndMs: Long,
+    val deltaPx: Float,
+    val snappedTo: Long?
+)
+
+/** A clip lifted by a long press and dragged to a new place; [grabX] is where the finger took it, from the clip's left edge. */
+private data class ClipReorder(val fromIndex: Int, val grabX: Float, val deltaPx: Float)
+
+// While reordering, holding the finger this close to either edge scrolls the timeline
+private const val REORDER_EDGE_DP = 48
+private const val REORDER_SCROLL_STEP_DP = 6
 
 @Composable
 fun TimelineView(
@@ -126,9 +159,15 @@ fun TimelineView(
     selectedAudioTrackId: String? = null,
     onSelectAudioTrack: (String) -> Unit = {},
     onScrubStarted: () -> Unit = {},
+    onTrimSelectedClip: (startMs: Long, endMs: Long) -> Unit = { _, _ -> },
+    onMoveOverlay: (id: String, startMs: Long) -> Unit = { _, _ -> },
+    onMoveAudioTrack: (id: String, startMs: Long) -> Unit = { _, _ -> },
+    onSetOverlayTiming: (id: String, startMs: Long, endMs: Long) -> Unit = { _, _, _ -> },
+    onMoveClip: (from: Int, to: Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     val scrollState = rememberScrollState()
 
     // True while the user is dragging the filmstrip or it is still flinging from their drag.
@@ -147,7 +186,69 @@ fun TimelineView(
     // Pinch the filmstrip to zoom: fewer dp per second shows more of a long video at once
     var dpPerSecond by remember { mutableFloatStateOf(DEFAULT_DP_PER_SECOND) }
     val pxPerSecond = with(density) { dpPerSecond.dp.toPx() }
-    val totalDurationSafe = totalDurationMs.coerceAtLeast(1L)
+
+    // Dragging the selected clip's gold edges trims it live; the edit is saved when the finger lifts
+    var trimPreview by remember { mutableStateOf<VideoClip?>(null) }
+    val displayClips = trimPreview
+        ?.takeIf { selectedClipIndex in clips.indices && clips[selectedClipIndex].id == it.id }
+        ?.let { preview -> clips.toMutableList().also { it[selectedClipIndex] = preview } }
+        ?: clips
+    // Laid out from the clips (not the player) so a live trim resizes the strip immediately
+    val totalDurationSafe = displayClips.sumOf { it.playbackDurationMs }.coerceAtLeast(1L)
+
+    var chipDrag by remember { mutableStateOf<ChipDrag?>(null) }
+    val clipBoundariesMs = remember(clips) { clips.runningFold(0L) { acc, clip -> acc + clip.playbackDurationMs } }
+
+    /** Where the dragged edge (or the start, when moving) would be, before snapping. */
+    fun rawDragMs(drag: ChipDrag): Long {
+        val fromMs = if (drag.edge == ChipEdge.END) drag.originalEndMs else drag.originalStartMs
+        val maxMs = if (drag.edge == ChipEdge.END) totalDurationSafe else (totalDurationSafe - 100L).coerceAtLeast(0L)
+        return (fromMs + (drag.deltaPx / pxPerSecond * 1000f).toLong()).coerceIn(0L, maxMs)
+    }
+
+    /** A chip's start/end, following the finger while it's being dragged. */
+    fun chipSpan(id: String, startMs: Long, endMs: Long): Pair<Long, Long> {
+        val drag = chipDrag?.takeIf { it.id == id } ?: return startMs to endMs
+        val atMs = drag.snappedTo ?: rawDragMs(drag)
+        return when (drag.edge) {
+            null -> atMs to atMs + (drag.originalEndMs - drag.originalStartMs)
+            ChipEdge.START -> atMs.coerceAtMost(drag.originalEndMs - MIN_TEXT_CHIP_MS).coerceAtLeast(0L) to drag.originalEndMs
+            ChipEdge.END -> drag.originalStartMs to atMs.coerceAtLeast(drag.originalStartMs + MIN_TEXT_CHIP_MS)
+        }
+    }
+
+    fun dragChip(id: String, edge: ChipEdge?, startMs: Long, endMs: Long, deltaPx: Float) {
+        val current = chipDrag?.takeIf { it.id == id && it.edge == edge } ?: ChipDrag(id, edge, startMs, endMs, 0f, null)
+        val moved = current.copy(deltaPx = current.deltaPx + deltaPx)
+        val rawMs = rawDragMs(moved)
+        val snapMs = (SNAP_DISTANCE_DP / dpPerSecond * 1000f).toLong()
+        val snapped = (clipBoundariesMs + currentPositionMs).minByOrNull { kotlin.math.abs(it - rawMs) }
+            ?.takeIf { kotlin.math.abs(it - rawMs) <= snapMs }
+        if (snapped != null && snapped != current.snappedTo) {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+        chipDrag = moved.copy(snappedTo = snapped)
+    }
+
+    fun endChipDrag(onMove: (String, Long) -> Unit) {
+        val drag = chipDrag ?: return
+        val (startMs, endMs) = chipSpan(drag.id, drag.originalStartMs, drag.originalEndMs)
+        chipDrag = null
+        if (startMs == drag.originalStartMs && endMs == drag.originalEndMs) return
+        if (drag.edge == null) onMove(drag.id, startMs) else onSetOverlayTiming(drag.id, startMs, endMs)
+    }
+
+    // Long-press a clip and drag it sideways to reorder; the gold marker shows where it will land
+    var reorder by remember { mutableStateOf<ClipReorder?>(null) }
+
+    /** The index the lifted clip would take if dropped now (its index after removal from the list). */
+    fun reorderTarget(drag: ClipReorder): Int {
+        val starts = clipBoundariesMs
+        val draggedCenterPx = (starts[drag.fromIndex] + starts[drag.fromIndex + 1]) / 2f / 1000f * pxPerSecond + drag.deltaPx
+        return clips.indices
+            .filter { it != drag.fromIndex }
+            .count { (starts[it] + starts[it + 1]) / 2f / 1000f * pxPerSecond < draggedCenterPx }
+    }
 
     Column(
         modifier = modifier
@@ -337,7 +438,7 @@ fun TimelineView(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, tint = GoldChampagne, modifier = Modifier.size(18.dp))
                         Text(
-                            text = "No clips in timeline. Tap here to add videos.",
+                            text = "No clips yet. Tap here to add videos or photos.",
                             color = TextSecondary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
@@ -369,6 +470,29 @@ fun TimelineView(
                 }
 
                 fun msToDp(ms: Long) = (ms / 1000f * dpPerSecond).dp
+
+                // Reordering past the visible part: scroll while the finger is held near an edge,
+                // moving the lifted clip by the same amount so it stays under the finger
+                val isReordering = reorder != null
+                LaunchedEffect(isReordering) {
+                    val edgePx = with(density) { REORDER_EDGE_DP.dp.toPx() }
+                    val stepPx = with(density) { REORDER_SCROLL_STEP_DP.dp.toPx() }
+                    while (isReordering) {
+                        val drag = reorder ?: break
+                        val fingerContentPx = clipBoundariesMs[drag.fromIndex] / 1000f * pxPerSecond + drag.grabX + drag.deltaPx
+                        val fingerViewPx = fingerContentPx + viewWidthPx / 2f - scrollState.value
+                        val direction = when {
+                            fingerViewPx < edgePx -> -1f
+                            fingerViewPx > viewWidthPx - edgePx -> 1f
+                            else -> 0f
+                        }
+                        if (direction != 0f) {
+                            val scrolled = scrollState.scrollBy(direction * stepPx)
+                            reorder = reorder?.let { it.copy(deltaPx = it.deltaPx + scrolled) }
+                        }
+                        delay(16)
+                    }
+                }
                 val contentWidthDp = msToDp(totalDurationSafe)
 
                 Box(
@@ -436,21 +560,80 @@ fun TimelineView(
 
                             // Primary Video Filmstrip Track: widths are exactly proportional to
                             // playback duration so every pixel maps to the same moment as the playhead
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(68.dp)
-                                    .background(DarkSurface)
-                                    .padding(vertical = 3.dp)
-                            ) {
-                                clips.forEachIndexed { index, clip ->
-                                    VideoClipFilmstripBlock(
-                                        clip = clip,
-                                        widthDp = msToDp(clip.playbackDurationMs),
-                                        isSelected = index == selectedClipIndex,
-                                        onClick = { onSelectClip(index) }
+                            Box(modifier = Modifier.fillMaxWidth().height(68.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .fillMaxHeight()
+                                        .background(DarkSurface)
+                                        .padding(vertical = 3.dp)
+                                ) {
+                                    displayClips.forEachIndexed { index, clip ->
+                                        val isSelected = index == selectedClipIndex
+                                        val lifted = reorder?.takeIf { it.fromIndex == index }
+                                        VideoClipFilmstripBlock(
+                                            modifier = if (lifted != null) {
+                                                Modifier
+                                                    .zIndex(1f)
+                                                    .offset { IntOffset(lifted.deltaPx.toInt(), 0) }
+                                                    .graphicsLayer {
+                                                        scaleY = 0.9f
+                                                        alpha = 0.85f
+                                                    }
+                                            } else Modifier,
+                                            onReorderStart = { grabX ->
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                reorder = ClipReorder(index, grabX, 0f)
+                                            },
+                                            onReorderDrag = { deltaPx ->
+                                                reorder = reorder?.let { it.copy(deltaPx = it.deltaPx + deltaPx) }
+                                            },
+                                            onReorderEnd = {
+                                                reorder?.let { drag ->
+                                                    val to = reorderTarget(drag)
+                                                    if (to != drag.fromIndex) onMoveClip(drag.fromIndex, to)
+                                                }
+                                                reorder = null
+                                            },
+                                            // The thumbnail stays on the original frame while trimming so it doesn't reload every move
+                                            clip = clip,
+                                            thumbnailFrameMs = clips.getOrNull(index)?.trimStartMs ?: clip.trimStartMs,
+                                            widthDp = msToDp(clip.playbackDurationMs),
+                                            isSelected = isSelected,
+                                            onClick = { onSelectClip(index) },
+                                            onTrimDrag = if (isSelected) { isStartEdge, deltaPx ->
+                                                val base = trimPreview ?: clips[index]
+                                                trimPreview = base.trimmedByDrag(isStartEdge, (deltaPx / pxPerSecond * 1000f).toLong())
+                                            } else null,
+                                            onTrimEnd = {
+                                                trimPreview?.let { preview ->
+                                                    val original = clips.getOrNull(index)
+                                                    if (original != null && (preview.trimStartMs != original.trimStartMs || preview.trimEndMs != original.trimEndMs)) {
+                                                        onTrimSelectedClip(preview.trimStartMs, preview.trimEndMs)
+                                                    }
+                                                }
+                                                trimPreview = null
+                                            }
+                                        )
+                                    }
+                            }
+
+                            // Drop marker while reordering: the start of the clip it will go before,
+                            // or the end of the clip it will go after
+                            reorder?.let { drag ->
+                                val to = reorderTarget(drag)
+                                if (to != drag.fromIndex) {
+                                    val markerMs = if (to < drag.fromIndex) clipBoundariesMs[to] else clipBoundariesMs[to + 1]
+                                    Box(
+                                        modifier = Modifier
+                                            .offset(x = msToDp(markerMs) - 2.dp)
+                                            .width(4.dp)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(GoldChampagne)
                                     )
                                 }
+                            }
                             }
 
                             // Text & Sticker Track, positioned at each overlay's start/end time
@@ -463,16 +646,29 @@ fun TimelineView(
                                         .padding(vertical = 2.dp)
                                 ) {
                                     textOverlays.forEach { overlay ->
-                                        val startMs = overlay.startTimeMs.coerceIn(0L, totalDurationSafe)
-                                        val endMs = overlay.endTimeMs.coerceIn(startMs, totalDurationSafe)
+                                        val (spanStart, spanEnd) = chipSpan(overlay.id, overlay.startTimeMs, overlay.endTimeMs)
+                                        val startMs = spanStart.coerceIn(0L, totalDurationSafe)
+                                        val endMs = spanEnd.coerceIn(startMs, totalDurationSafe)
                                         val isSelected = overlay.id == selectedOverlayId
                                         TimelineTrackChip(
                                             label = if (overlay.isSticker) overlay.text else "T  ${overlay.text}",
                                             color = if (overlay.isSticker) GoldChampagne else Color(0xFFFFDE03),
                                             isSelected = isSelected,
+                                            isDragging = chipDrag?.id == overlay.id,
                                             modifier = Modifier
                                                 .offset(x = msToDp(startMs))
-                                                .width(msToDp(endMs - startMs).coerceAtLeast(MIN_CHIP_WIDTH_DP.dp)),
+                                                .width(msToDp(endMs - startMs).coerceAtLeast(MIN_CHIP_WIDTH_DP.dp))
+                                                .dragAlongTimeline(
+                                                    enabled = isSelected,
+                                                    key = overlay.id,
+                                                    onDrag = { dragChip(overlay.id, null, overlay.startTimeMs, overlay.endTimeMs, it) },
+                                                    onEnd = { endChipDrag(onMoveOverlay) }
+                                                ),
+                                            // Selected text gets edge handles to change when it appears / disappears
+                                            onEdgeDrag = if (isSelected) { edge, deltaPx ->
+                                                dragChip(overlay.id, edge, overlay.startTimeMs, overlay.endTimeMs, deltaPx)
+                                            } else null,
+                                            onEdgeEnd = { endChipDrag(onMoveOverlay) },
                                             onClick = { onSelectOverlay(overlay.id) }
                                         )
                                     }
@@ -489,7 +685,8 @@ fun TimelineView(
                                         .padding(vertical = 2.dp)
                                 ) {
                                     audioTracks.forEach { track ->
-                                        val startMs = track.timelineStartOffsetMs.coerceIn(0L, totalDurationSafe)
+                                        val startMs = chipSpan(track.id, track.timelineStartOffsetMs, track.timelineStartOffsetMs).first.coerceIn(0L, totalDurationSafe)
+                                        val isSelected = track.id == selectedAudioTrackId
                                         // Unknown length (e.g. picked music) plays to the end of the video
                                         val lengthMs = track.effectiveDurationMs.takeIf { it > 0L && !track.isLooping }
                                         val endMs = lengthMs?.let { (startMs + it).coerceAtMost(totalDurationSafe) } ?: totalDurationSafe
@@ -497,10 +694,17 @@ fun TimelineView(
                                             label = track.title,
                                             icon = if (track.isVoiceover) Icons.Default.Mic else Icons.Default.MusicNote,
                                             color = if (track.isVoiceover) NeonCoral else HyperCyan,
-                                            isSelected = track.id == selectedAudioTrackId,
+                                            isSelected = isSelected,
+                                            isDragging = chipDrag?.id == track.id,
                                             modifier = Modifier
                                                 .offset(x = msToDp(startMs))
-                                                .width(msToDp(endMs - startMs).coerceAtLeast(MIN_CHIP_WIDTH_DP.dp)),
+                                                .width(msToDp(endMs - startMs).coerceAtLeast(MIN_CHIP_WIDTH_DP.dp))
+                                                .dragAlongTimeline(
+                                                    enabled = isSelected,
+                                                    key = track.id,
+                                                    onDrag = { dragChip(track.id, null, track.timelineStartOffsetMs, track.timelineStartOffsetMs, it) },
+                                                    onEnd = { endChipDrag(onMoveAudioTrack) }
+                                                ),
                                             onClick = { onSelectAudioTrack(track.id) }
                                         )
                                     }
@@ -546,14 +750,24 @@ fun TimelineView(
 @Composable
 private fun VideoClipFilmstripBlock(
     clip: VideoClip,
+    thumbnailFrameMs: Long,
     widthDp: androidx.compose.ui.unit.Dp,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onTrimDrag: ((isStartEdge: Boolean, deltaPx: Float) -> Unit)? = null,
+    onTrimEnd: () -> Unit = {},
+    onReorderStart: (grabX: Float) -> Unit = {},
+    onReorderDrag: (deltaPx: Float) -> Unit = {},
+    onReorderEnd: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val latestOnReorderStart by rememberUpdatedState(onReorderStart)
+    val latestOnReorderDrag by rememberUpdatedState(onReorderDrag)
+    val latestOnReorderEnd by rememberUpdatedState(onReorderEnd)
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .width(widthDp)
             .padding(horizontal = 1.dp)
             .fillMaxHeight()
@@ -564,6 +778,16 @@ private fun VideoClipFilmstripBlock(
                 brush = if (isSelected) GoldRimGradient else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.05f))),
                 shape = RoundedCornerShape(8.dp)
             )
+            .pointerInput(Unit) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { latestOnReorderStart(it.x) },
+                    onDragEnd = { latestOnReorderEnd() },
+                    onDragCancel = { latestOnReorderEnd() }
+                ) { change, dragAmount ->
+                    change.consume()
+                    latestOnReorderDrag(dragAmount.x)
+                }
+            }
             .clickable(onClick = onClick)
     ) {
         // Real Video Thumbnail Frame via Coil VideoFrameDecoder
@@ -571,7 +795,7 @@ private fun VideoClipFilmstripBlock(
             model = ImageRequest.Builder(context)
                 .data(clip.uri)
                 .decoderFactory(VideoFrameDecoder.Factory())
-                .videoFrameMillis(clip.trimStartMs)
+                .videoFrameMillis(thumbnailFrameMs)
                 .crossfade(true)
                 .build(),
             contentDescription = null,
@@ -648,7 +872,15 @@ private fun VideoClipFilmstripBlock(
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (clip.isMuted) {
+                    if (clip.isPhoto) {
+                        Icon(
+                            Icons.Default.Image,
+                            contentDescription = "Photo",
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(11.dp)
+                        )
+                    }
+                    if (clip.isMuted && !clip.isPhoto) {
                         Icon(
                             Icons.AutoMirrored.Filled.VolumeOff,
                             contentDescription = "Muted",
@@ -666,22 +898,67 @@ private fun VideoClipFilmstripBlock(
             }
         }
 
-        // Active Clip Gold Trim Indicators on Left & Right
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(4.dp)
-                    .align(Alignment.CenterStart)
-                    .background(GoldChampagne)
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(4.dp)
-                    .align(Alignment.CenterEnd)
-                    .background(GoldChampagne)
-            )
+        // Gold trim handles: drag either edge of the selected clip to trim it
+        if (isSelected && onTrimDrag != null) {
+            TrimHandle(isStartEdge = true, onTrimDrag = onTrimDrag, onTrimEnd = onTrimEnd, modifier = Modifier.align(Alignment.CenterStart))
+            TrimHandle(isStartEdge = false, onTrimDrag = onTrimDrag, onTrimEnd = onTrimEnd, modifier = Modifier.align(Alignment.CenterEnd))
+        }
+    }
+}
+
+@Composable
+private fun TrimHandle(
+    isStartEdge: Boolean,
+    onTrimDrag: (isStartEdge: Boolean, deltaPx: Float) -> Unit,
+    onTrimEnd: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val latestOnDrag by rememberUpdatedState(onTrimDrag)
+    val latestOnEnd by rememberUpdatedState(onTrimEnd)
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(14.dp)
+            .background(GoldChampagne)
+            .pointerInput(isStartEdge) {
+                detectHorizontalDragGestures(
+                    onDragEnd = { latestOnEnd() },
+                    onDragCancel = { latestOnEnd() }
+                ) { change, dragAmount ->
+                    change.consume()
+                    latestOnDrag(isStartEdge, dragAmount)
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        // Grip line so the edge reads as something to grab
+        Box(
+            modifier = Modifier
+                .width(2.dp)
+                .height(18.dp)
+                .clip(RoundedCornerShape(1.dp))
+                .background(Color.Black.copy(alpha = 0.6f))
+        )
+    }
+}
+
+/** Lets a selected chip be dragged in time; unselected chips leave the drag to the timeline scroll. */
+@Composable
+private fun Modifier.dragAlongTimeline(
+    enabled: Boolean,
+    key: String,
+    onDrag: (deltaPx: Float) -> Unit,
+    onEnd: () -> Unit
+): Modifier {
+    val latestOnDrag by rememberUpdatedState(onDrag)
+    val latestOnEnd by rememberUpdatedState(onEnd)
+    return if (!enabled) this else this.pointerInput(key) {
+        detectHorizontalDragGestures(
+            onDragEnd = { latestOnEnd() },
+            onDragCancel = { latestOnEnd() }
+        ) { change, dragAmount ->
+            change.consume()
+            latestOnDrag(dragAmount)
         }
     }
 }
@@ -692,31 +969,70 @@ private fun TimelineTrackChip(
     color: Color,
     isSelected: Boolean,
     modifier: Modifier = Modifier,
+    isDragging: Boolean = false,
     icon: ImageVector? = null,
+    onEdgeDrag: ((ChipEdge, deltaPx: Float) -> Unit)? = null,
+    onEdgeEnd: () -> Unit = {},
     onClick: (() -> Unit)? = null
 ) {
-    Row(
+    Box(
         modifier = modifier
             .fillMaxHeight()
             .padding(horizontal = 1.dp)
             .clip(RoundedCornerShape(4.dp))
-            .background(color.copy(alpha = if (isSelected) 0.45f else 0.22f))
-            .border(if (isSelected) 1.5.dp else 0.8.dp, color, RoundedCornerShape(4.dp))
+            .background(color.copy(alpha = if (isDragging) 0.7f else if (isSelected) 0.45f else 0.22f))
+            .border(if (isSelected) 1.5.dp else 0.8.dp, if (isDragging) Color.White else color, RoundedCornerShape(4.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        if (icon != null) {
-            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(11.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = if (onEdgeDrag != null) 12.dp else 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(11.dp))
+            }
+            Text(
+                text = label,
+                color = TextPrimary,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Clip
+            )
         }
-        Text(
-            text = label,
-            color = TextPrimary,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Clip
-        )
+        if (onEdgeDrag != null) {
+            ChipEdgeHandle(ChipEdge.START, color, onEdgeDrag, onEdgeEnd, Modifier.align(Alignment.CenterStart))
+            ChipEdgeHandle(ChipEdge.END, color, onEdgeDrag, onEdgeEnd, Modifier.align(Alignment.CenterEnd))
+        }
     }
+}
+
+@Composable
+private fun ChipEdgeHandle(
+    edge: ChipEdge,
+    color: Color,
+    onEdgeDrag: (ChipEdge, deltaPx: Float) -> Unit,
+    onEdgeEnd: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val latestOnDrag by rememberUpdatedState(onEdgeDrag)
+    val latestOnEnd by rememberUpdatedState(onEdgeEnd)
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(10.dp)
+            .background(color)
+            .pointerInput(edge) {
+                detectHorizontalDragGestures(
+                    onDragEnd = { latestOnEnd() },
+                    onDragCancel = { latestOnEnd() }
+                ) { change, dragAmount ->
+                    change.consume()
+                    latestOnDrag(edge, dragAmount)
+                }
+            }
+    )
 }

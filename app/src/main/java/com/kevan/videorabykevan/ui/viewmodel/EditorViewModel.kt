@@ -11,6 +11,8 @@ import com.kevan.videorabykevan.data.ProjectMediaStore
 import com.kevan.videorabykevan.data.ProjectRepository
 import com.kevan.videorabykevan.data.SampleMediaHelper
 import com.kevan.videorabykevan.data.SoundEffectItem
+import com.kevan.videorabykevan.data.StillVideoEncoder
+import com.kevan.videorabykevan.data.TextToSpeechHelper
 import com.kevan.videorabykevan.engine.ExportProgressState
 import com.kevan.videorabykevan.engine.PlayerState
 import com.kevan.videorabykevan.engine.VideoExportManager
@@ -18,11 +20,16 @@ import com.kevan.videorabykevan.engine.VideoPlayerManager
 import com.kevan.videorabykevan.model.AspectRatioPreset
 import com.kevan.videorabykevan.model.AudioTrack
 import com.kevan.videorabykevan.model.ExportPreset
+import com.kevan.videorabykevan.model.FREEZE_DEFAULT_MS
+import com.kevan.videorabykevan.model.MIN_TRIM_MS
+import com.kevan.videorabykevan.model.PHOTO_DEFAULT_MS
+import com.kevan.videorabykevan.model.STILL_SOURCE_MS
 import com.kevan.videorabykevan.model.Project
 import com.kevan.videorabykevan.model.SafeZoneType
 import com.kevan.videorabykevan.model.TextOverlay
 import com.kevan.videorabykevan.model.VideoClip
 import com.kevan.videorabykevan.model.VideoFilter
+import com.kevan.videorabykevan.model.VoiceEffect
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -58,6 +65,7 @@ data class EditorUiState(
     val showVolumeSheet: Boolean = false,
     val showAdjustSheet: Boolean = false,
     val showFadeSheet: Boolean = false,
+    val showVoiceEffectSheet: Boolean = false,
     val isComparingOriginal: Boolean = false
 )
 
@@ -95,6 +103,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _uiState.map { it.project.audioTracks }.distinctUntilChanged().collect {
                 playerManager.setAudioTracks(it)
+            }
+        }
+        viewModelScope.launch {
+            _uiState.map { it.project.duckMusicUnderVoice }.distinctUntilChanged().collect {
+                playerManager.setDucking(it)
             }
         }
     }
@@ -185,64 +198,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun addVideoUris(uris: List<Uri>, context: Context) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            val newClips = mutableListOf<VideoClip>()
-            val projectDir = File(context.filesDir, "projects/${_uiState.value.project.id}/clips")
-
-            withContext(Dispatchers.IO) {
-                projectDir.mkdirs()
-                for ((index, uri) in uris.withIndex()) {
-                    try {
-                        // Copy content URI to local storage for instant zero-latency seeks and 100% persistent playback
-                        val targetFile = File(projectDir, "clip_${System.currentTimeMillis()}_$index.mp4")
-                        var copiedSuccessfully = false
-
-                        try {
-                            context.contentResolver.openInputStream(uri)?.use { input ->
-                                targetFile.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                            copiedSuccessfully = targetFile.exists() && targetFile.length() > 0
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-
-                        val finalUri = if (copiedSuccessfully) {
-                            Uri.fromFile(targetFile).toString()
-                        } else {
-                            uri.toString()
-                        }
-
-                        val retriever = MediaMetadataRetriever()
-                        try {
-                            if (copiedSuccessfully) {
-                                retriever.setDataSource(targetFile.absolutePath)
-                            } else {
-                                retriever.setDataSource(context, uri)
-                            }
-                            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                            val durationMs = durationStr?.toLongOrNull() ?: 5000L
-                            val title = uri.lastPathSegment?.substringAfterLast('/') ?: "Clip ${newClips.size + 1}"
-
-                            newClips.add(
-                                VideoClip(
-                                    uri = finalUri,
-                                    name = title,
-                                    durationMs = durationMs,
-                                    trimStartMs = 0L,
-                                    trimEndMs = durationMs
-                                )
-                            )
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        } finally {
-                            try { retriever.release() } catch (_: Exception) {}
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-            }
+            val newClips = importVideos(uris, context)
 
             pushUndoState(_uiState.value.project)
             val updatedClips = _uiState.value.project.clips + newClips
@@ -254,6 +210,201 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             )
             playerManager.setClips(updatedClips)
             persistProject()
+        }
+    }
+
+    /**
+     * Swaps the selected clip's video for [uri] but keeps its edits (speed, color, volume, mirror...)
+     * and, where the new video is long enough, its length on the timeline.
+     */
+    fun replaceSelectedClip(uri: Uri, context: Context) {
+        val index = _uiState.value.selectedClipIndex
+        val old = _uiState.value.project.clips.getOrNull(index) ?: return
+        viewModelScope.launch {
+            val imported = importVideos(listOf(uri), context).firstOrNull()
+            if (imported == null) {
+                showMessage("Couldn't open that video")
+                return@launch
+            }
+            val clips = _uiState.value.project.clips.toMutableList()
+            if (index !in clips.indices || clips[index].id != old.id) return@launch
+            pushUndoState(_uiState.value.project)
+            clips[index] = old.copy(
+                uri = imported.uri,
+                name = imported.name,
+                durationMs = imported.durationMs,
+                isPhoto = imported.isPhoto,
+                trimStartMs = 0L,
+                trimEndMs = old.trimmedDurationMs.coerceIn(MIN_TRIM_MS.coerceAtMost(imported.durationMs), imported.durationMs)
+            )
+            _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(clips = clips))
+            playerManager.setClips(clips)
+            persistProject()
+            showMessage("Clip replaced", offerUndo = true)
+        }
+    }
+
+    /**
+     * Copies picked videos into the project folder (fast seeks, and they survive the picker's grant
+     * expiring). Photos are encoded into short still videos so they behave like any other clip.
+     */
+    private suspend fun importVideos(uris: List<Uri>, context: Context): List<VideoClip> {
+        val newClips = mutableListOf<VideoClip>()
+        val projectDir = File(context.filesDir, "projects/${_uiState.value.project.id}/clips")
+
+        withContext(Dispatchers.IO) {
+            projectDir.mkdirs()
+            for ((index, uri) in uris.withIndex()) {
+                if (context.contentResolver.getType(uri)?.startsWith("image/") == true) {
+                    val bitmap = StillVideoEncoder.decodeImage(context, uri) ?: continue
+                    val title = uri.lastPathSegment?.substringAfterLast('/') ?: "Photo ${newClips.size + 1}"
+                    stillClip(bitmap, File(projectDir, "photo_${System.currentTimeMillis()}_$index.mp4"), title, PHOTO_DEFAULT_MS)
+                        ?.let { newClips.add(it) }
+                    bitmap.recycle()
+                    continue
+                }
+                try {
+                    // Copy content URI to local storage for instant zero-latency seeks and 100% persistent playback
+                    val targetFile = File(projectDir, "clip_${System.currentTimeMillis()}_$index.mp4")
+                    var copiedSuccessfully = false
+
+                    try {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            targetFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        copiedSuccessfully = targetFile.exists() && targetFile.length() > 0
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
+                    val finalUri = if (copiedSuccessfully) {
+                        Uri.fromFile(targetFile).toString()
+                    } else {
+                        uri.toString()
+                    }
+
+                    val retriever = MediaMetadataRetriever()
+                    try {
+                        if (copiedSuccessfully) {
+                            retriever.setDataSource(targetFile.absolutePath)
+                        } else {
+                            retriever.setDataSource(context, uri)
+                        }
+                        val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        val durationMs = durationStr?.toLongOrNull() ?: 5000L
+                        val title = uri.lastPathSegment?.substringAfterLast('/') ?: "Clip ${newClips.size + 1}"
+
+                        newClips.add(
+                            VideoClip(
+                                uri = finalUri,
+                                name = title,
+                                durationMs = durationMs,
+                                trimStartMs = 0L,
+                                trimEndMs = durationMs
+                            )
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        try { retriever.release() } catch (_: Exception) {}
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+        return newClips
+    }
+
+    /** Encodes [bitmap] as a still clip showing for [showMs] (stretchable up to [STILL_SOURCE_MS]). */
+    private suspend fun stillClip(bitmap: android.graphics.Bitmap, file: File, name: String, showMs: Long): VideoClip? {
+        if (!StillVideoEncoder.encode(bitmap, STILL_SOURCE_MS, file)) return null
+        val durationMs = withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(file.absolutePath)
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+            } catch (e: Exception) {
+                null
+            } finally {
+                try { retriever.release() } catch (_: Exception) {}
+            }
+        } ?: return null
+        return VideoClip(
+            uri = Uri.fromFile(file).toString(),
+            name = name,
+            durationMs = durationMs,
+            trimStartMs = 0L,
+            trimEndMs = showMs.coerceAtMost(durationMs),
+            isPhoto = true
+        )
+    }
+
+    /**
+     * TikTok-style freeze frame: holds the frame under the playhead for a couple of seconds, cutting
+     * the clip there (or adding it before / after the clip when the playhead is at an edge).
+     */
+    fun freezeFrameAtPlayhead() {
+        val clips = _uiState.value.project.clips
+        if (clips.isEmpty()) return
+        val position = playerState.value.currentPositionMs
+        var clipStart = 0L
+        val index = clips.indices.firstOrNull { i ->
+            val end = clipStart + clips[i].playbackDurationMs
+            (position < end || i == clips.lastIndex).also { if (!it) clipStart = end }
+        } ?: return
+        val clip = clips[index]
+        val sourceMs = (clip.trimStartMs + ((position - clipStart).coerceAtLeast(0L) * clip.speed).toLong())
+            .coerceIn(clip.trimStartMs, clip.trimEndMs)
+
+        viewModelScope.launch {
+            showMessage("Freezing frame…")
+            val context = getApplication<Application>().applicationContext
+            val frame = withContext(Dispatchers.IO) {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, Uri.parse(clip.uri))
+                    retriever.getFrameAtTime(sourceMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST)
+                } catch (e: Exception) {
+                    null
+                } finally {
+                    try { retriever.release() } catch (_: Exception) {}
+                }
+            }
+            val projectDir = File(context.filesDir, "projects/${_uiState.value.project.id}/clips").apply { mkdirs() }
+            val still = frame?.let { stillClip(it, File(projectDir, "freeze_${System.currentTimeMillis()}.mp4"), "Freeze · ${clip.name}", FREEZE_DEFAULT_MS) }
+            frame?.recycle()
+            if (still == null) {
+                showMessage("Couldn't grab that frame")
+                return@launch
+            }
+            // The frozen frame keeps the clip's look
+            val freeze = clip.copyColorTo(still).copy(rotationDegrees = clip.rotationDegrees, isFlippedHorizontal = clip.isFlippedHorizontal)
+
+            val current = _uiState.value.project.clips.toMutableList()
+            if (current.getOrNull(index)?.id != clip.id) return@launch
+            pushUndoState(_uiState.value.project)
+            val freezeIndex = when {
+                sourceMs <= clip.trimStartMs + MIN_TRIM_MS -> index
+                sourceMs >= clip.trimEndMs - MIN_TRIM_MS -> index + 1
+                else -> {
+                    current[index] = clip.copy(name = splitPartName(clip.name, 1), trimEndMs = sourceMs)
+                    current.add(index + 1, clip.copy(id = java.util.UUID.randomUUID().toString(), name = splitPartName(clip.name, 2), trimStartMs = sourceMs))
+                    index + 1
+                }
+            }
+            current.add(freezeIndex, freeze)
+            _uiState.value = _uiState.value.copy(
+                project = _uiState.value.project.copy(clips = current),
+                selectedClipIndex = freezeIndex,
+                selectedOverlayId = null,
+                selectedAudioTrackId = null
+            )
+            playerManager.setClips(current)
+            persistProject()
+            showMessage("Freeze frame added", offerUndo = true)
         }
     }
 
@@ -288,7 +439,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** Tapping the selected clip again deselects it; tapping another selects it and jumps to its start. */
+    /**
+     * Tapping the selected clip again deselects it; tapping another selects it. The playhead only
+     * jumps to the clip's start when it's outside the clip, so "select, then Split" cuts where the user aimed.
+     */
     fun selectClip(index: Int) {
         val clips = _uiState.value.project.clips
         if (index !in clips.indices) return
@@ -297,7 +451,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         _uiState.value = _uiState.value.copy(selectedClipIndex = index, selectedOverlayId = null, selectedAudioTrackId = null)
-        playerManager.seekToTimeline(clips.take(index).sumOf { it.playbackDurationMs })
+        val clipStart = clips.take(index).sumOf { it.playbackDurationMs }
+        val position = playerState.value.currentPositionMs
+        if (position !in clipStart until clipStart + clips[index].playbackDurationMs) {
+            playerManager.seekToTimeline(clipStart)
+        }
     }
 
     fun clearSelection() {
@@ -354,6 +512,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             playerManager.setClips(clips)
             persistProject()
         }
+    }
+
+    /** Long-press drag in the timeline: [to] is the clip's index after the move. */
+    fun moveClip(from: Int, to: Int) {
+        val clips = _uiState.value.project.clips.toMutableList()
+        if (from !in clips.indices || to !in clips.indices || from == to) return
+        pushUndoState(_uiState.value.project)
+        clips.add(to, clips.removeAt(from))
+        _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(clips = clips), selectedClipIndex = to)
+        playerManager.setClips(clips)
+        persistProject()
     }
 
     fun moveClipLeft(index: Int) {
@@ -599,14 +768,90 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         persistProject()
     }
 
+    /** Called once when a drag on the video ends, so each move is one undo step. */
     fun updateOverlayPosition(id: String, normX: Float, normY: Float) {
         val list = _uiState.value.project.textOverlays.toMutableList()
         val index = list.indexOfFirst { it.id == id }
-        if (index >= 0) {
+        if (index >= 0 && (list[index].posX != normX || list[index].posY != normY)) {
+            pushUndoState(_uiState.value.project)
             list[index] = list[index].copy(posX = normX, posY = normY)
             val updatedProject = _uiState.value.project.copy(textOverlays = list)
             _uiState.value = _uiState.value.copy(project = updatedProject)
             persistProject()
+        }
+    }
+
+    /** Pinch-to-resize on the video; one undo step per gesture. */
+    fun resizeOverlay(id: String, fontSizeSp: Float) {
+        val list = _uiState.value.project.textOverlays
+        val index = list.indexOfFirst { it.id == id }
+        if (index < 0 || list[index].fontSizeSp == fontSizeSp) return
+        pushUndoState(_uiState.value.project)
+        val updated = list.toMutableList().apply { this[index] = this[index].copy(fontSizeSp = fontSizeSp) }
+        _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(textOverlays = updated))
+        persistProject()
+    }
+
+    /** Dragging a text/sticker chip along the timeline keeps its length and moves its start. */
+    fun moveOverlayInTime(id: String, startMs: Long) {
+        val list = _uiState.value.project.textOverlays
+        val index = list.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val overlay = list[index]
+        val start = startMs.coerceAtLeast(0L)
+        if (start == overlay.startTimeMs) return
+        pushUndoState(_uiState.value.project)
+        val moved = overlay.copy(startTimeMs = start, endTimeMs = start + (overlay.endTimeMs - overlay.startTimeMs))
+        val updated = list.toMutableList().apply { this[index] = moved }
+        _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(textOverlays = updated))
+        persistProject()
+    }
+
+    /** Dragging a text chip's edges on the timeline. */
+    fun setOverlayTiming(id: String, startMs: Long, endMs: Long) {
+        val list = _uiState.value.project.textOverlays
+        val index = list.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val start = startMs.coerceAtLeast(0L)
+        val end = endMs.coerceAtLeast(start + MIN_OVERLAY_MS)
+        if (start == list[index].startTimeMs && end == list[index].endTimeMs) return
+        pushUndoState(_uiState.value.project)
+        val updated = list.toMutableList().apply { this[index] = this[index].copy(startTimeMs = start, endTimeMs = end) }
+        _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(textOverlays = updated))
+        persistProject()
+    }
+
+    /** TikTok-style "Text-to-speech": the selected text is spoken into a voice track starting with the text. */
+    fun readSelectedOverlayAloud() {
+        val overlay = _uiState.value.project.textOverlays.find { it.id == _uiState.value.selectedOverlayId } ?: return
+        if (overlay.text.isBlank()) return
+        viewModelScope.launch {
+            showMessage("Creating voice…")
+            val context = getApplication<Application>().applicationContext
+            val file = TextToSpeechHelper.synthesizeToFile(context, overlay.text)
+            if (file == null) {
+                showMessage("No text-to-speech voice found. Add one in Android Settings › Text-to-speech.")
+                return@launch
+            }
+            val owned = ProjectMediaStore.adoptFile(context, _uiState.value.project.id, file, move = true)
+            val track = ProjectMediaStore.measureAudioTracks(
+                context,
+                listOf(
+                    AudioTrack(
+                        uri = Uri.fromFile(owned).toString(),
+                        title = "🗣 ${overlay.text.take(24)}",
+                        timelineStartOffsetMs = overlay.startTimeMs,
+                        volume = 1f,
+                        isVoiceover = true
+                    )
+                )
+            ).first()
+            pushUndoState(_uiState.value.project)
+            _uiState.value = _uiState.value.copy(
+                project = _uiState.value.project.copy(audioTracks = _uiState.value.project.audioTracks + track)
+            )
+            persistProject()
+            showMessage("Voice added where the text starts", offerUndo = true)
         }
     }
 
@@ -701,6 +946,36 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun moveSelectedAudioToPlayhead() {
         val position = playerState.value.currentPositionMs
         updateSelectedAudioTrack { it.copy(timelineStartOffsetMs = position) }
+    }
+
+    /** Dragging an audio chip along the timeline. */
+    fun moveAudioTrackInTime(id: String, startMs: Long) {
+        val track = _uiState.value.project.audioTracks.find { it.id == id } ?: return
+        val start = startMs.coerceAtLeast(0L)
+        if (start == track.timelineStartOffsetMs) return
+        if (_uiState.value.selectedAudioTrackId != id) focusAudioTrack(id)
+        updateSelectedAudioTrack { it.copy(timelineStartOffsetMs = start) }
+    }
+
+    fun setSelectedAudioVoiceEffect(effect: VoiceEffect) = updateSelectedAudioTrack { it.copy(voiceEffect = effect) }
+
+    fun setSelectedClipVoiceEffect(effect: VoiceEffect) {
+        val index = _uiState.value.selectedClipIndex
+        val clips = _uiState.value.project.clips.toMutableList()
+        if (index !in clips.indices || clips[index].voiceEffect == effect) return
+        pushUndoState(_uiState.value.project)
+        clips[index] = clips[index].copy(voiceEffect = effect)
+        _uiState.value = _uiState.value.copy(project = _uiState.value.project.copy(clips = clips))
+        playerManager.setClips(clips)
+        persistProject()
+    }
+
+    fun toggleDuckMusicUnderVoice() {
+        pushUndoState(_uiState.value.project)
+        _uiState.value = _uiState.value.copy(
+            project = _uiState.value.project.let { it.copy(duckMusicUnderVoice = !it.duckMusicUnderVoice) }
+        )
+        persistProject()
     }
 
     fun toggleSelectedAudioLoop() = updateSelectedAudioTrack { it.copy(isLooping = !it.isLooping) }
@@ -846,6 +1121,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun setShowVolumeSheet(show: Boolean) = _uiState.update { it.copy(showVolumeSheet = show) }
     fun setShowAdjustSheet(show: Boolean) = _uiState.update { it.copy(showAdjustSheet = show) }
     fun setShowFadeSheet(show: Boolean) = _uiState.update { it.copy(showFadeSheet = show) }
+    fun setShowVoiceEffectSheet(show: Boolean) = _uiState.update { it.copy(showVoiceEffectSheet = show) }
 
     private inline fun MutableStateFlow<EditorUiState>.update(function: (EditorUiState) -> EditorUiState) {
         value = function(value)

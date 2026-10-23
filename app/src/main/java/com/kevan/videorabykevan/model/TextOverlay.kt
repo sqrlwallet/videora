@@ -2,6 +2,37 @@ package com.kevan.videorabykevan.model
 
 import java.util.UUID
 
+/** Entrance (and matching exit) animation for a text overlay or sticker. */
+enum class TextAnimation(val title: String) {
+    NONE("None"),
+    FADE("Fade"),
+    POP("Pop"),
+    SLIDE_UP("Slide up"),
+    TYPEWRITER("Typewriter")
+}
+
+/**
+ * One moment of a [TextAnimation]. [offsetY] is a fraction of the frame height (down is positive);
+ * [visibleChars] = null shows all the text.
+ */
+data class TextAnimationFrame(
+    val alpha: Float = 1f,
+    val scale: Float = 1f,
+    val offsetY: Float = 0f,
+    val visibleChars: Int? = null
+) {
+    val isStatic: Boolean get() = this == STATIC
+
+    companion object {
+        val STATIC = TextAnimationFrame()
+    }
+}
+
+private const val ANIMATION_IN_MS = 400L
+private const val ANIMATION_OUT_MS = 250L
+private const val SLIDE_DISTANCE = 0.05f
+private const val TYPEWRITER_MS_PER_CHAR = 45L
+
 enum class TextStylePreset(
     val title: String,
     val defaultTextColorHex: Long,
@@ -63,8 +94,42 @@ data class TextOverlay(
     val posY: Float = 0.3f, // Normalized 0..1, vertical center (upper third = ideal hook position)
     val startTimeMs: Long = 0L,
     val endTimeMs: Long = 5000L,
-    val isSticker: Boolean = false
+    val isSticker: Boolean = false,
+    val animation: TextAnimation = TextAnimation.NONE
 ) {
+    /** How the overlay looks [timeMs] into the timeline; same values drive the preview and the export. */
+    fun animationFrameAt(timeMs: Long): TextAnimationFrame {
+        if (animation == TextAnimation.NONE || timeMs !in startTimeMs..endTimeMs) return TextAnimationFrame.STATIC
+        val length = (endTimeMs - startTimeMs).coerceAtLeast(1L)
+        val sinceStart = timeMs - startTimeMs
+        val untilEnd = endTimeMs - timeMs
+        // Short overlays get shorter animations so they're never all transition
+        val inMs = ANIMATION_IN_MS.coerceAtMost(length / 3).coerceAtLeast(1L)
+        val outMs = ANIMATION_OUT_MS.coerceAtMost(length / 4).coerceAtLeast(1L)
+        val inProgress = (sinceStart.toFloat() / inMs).coerceIn(0f, 1f)
+        val outProgress = (untilEnd.toFloat() / outMs).coerceIn(0f, 1f)
+        return when (animation) {
+            TextAnimation.NONE -> TextAnimationFrame.STATIC
+            TextAnimation.FADE -> TextAnimationFrame(alpha = minOf(inProgress, outProgress))
+            TextAnimation.POP -> {
+                // Overshoots to 110% then settles, shrinks slightly as it leaves
+                val popIn = if (inProgress < 0.7f) 0.5f + 0.6f * (inProgress / 0.7f) else 1.1f - 0.1f * ((inProgress - 0.7f) / 0.3f)
+                val scale = if (outProgress < 1f) 0.8f + 0.2f * outProgress else popIn
+                TextAnimationFrame(alpha = minOf((inProgress * 2f).coerceAtMost(1f), outProgress), scale = scale)
+            }
+            TextAnimation.SLIDE_UP -> {
+                val eased = 1f - (1f - inProgress) * (1f - inProgress)
+                TextAnimationFrame(alpha = minOf(inProgress, outProgress), offsetY = SLIDE_DISTANCE * (1f - eased))
+            }
+            TextAnimation.TYPEWRITER -> {
+                val typingMs = (text.length * TYPEWRITER_MS_PER_CHAR).coerceAtMost(length / 2).coerceAtLeast(1L)
+                val chars = (text.length * (sinceStart.toFloat() / typingMs)).toInt().coerceIn(0, text.length)
+                TextAnimationFrame(visibleChars = chars)
+            }
+        }
+    }
+
+
     companion object {
         val VIRAL_HOOK_TEMPLATES = listOf(
             "POV: Nobody is talking about this 🤫",

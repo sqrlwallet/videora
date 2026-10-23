@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kevan.videorabykevan.model.TextAnimation
 import com.kevan.videorabykevan.model.TextOverlay
 import com.kevan.videorabykevan.model.TextStylePreset
 import com.kevan.videorabykevan.ui.theme.AccentCyan
@@ -64,6 +65,7 @@ fun TextEditorSheet(
     var fontSize by remember { mutableFloatStateOf(existingOverlay?.fontSizeSp ?: selectedPreset.defaultFontSizeSp) }
     var posY by remember { mutableFloatStateOf(existingOverlay?.posY ?: 0.25f) }
     var posX by remember { mutableFloatStateOf(existingOverlay?.posX ?: 0.5f) }
+    var animation by remember { mutableStateOf(existingOverlay?.animation ?: TextAnimation.NONE) }
 
     val maxSec = (totalDurationMs / 1000f).coerceAtLeast(5f)
     var textColorHex by remember { mutableStateOf(existingOverlay?.textColorHex ?: selectedPreset.defaultTextColorHex) }
@@ -205,6 +207,17 @@ fun TextEditorSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            // Entrance animation (plays in reverse as it leaves, except Typewriter)
+            Text("Animation", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(TextAnimation.entries) { option ->
+                    PositionPill(label = option.title, isSelected = animation == option) { animation = option }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
             // Quick Position Placement
             Text("Position Placement", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
             Spacer(modifier = Modifier.height(6.dp))
@@ -295,6 +308,7 @@ fun TextEditorSheet(
                             backgroundColorHex = selectedPreset.defaultBackgroundColorHex,
                             posX = posX,
                             posY = posY,
+                            animation = animation,
                             startTimeMs = (startSec * 1000).toLong(),
                             endTimeMs = (endSec * 1000).toLong()
                         )

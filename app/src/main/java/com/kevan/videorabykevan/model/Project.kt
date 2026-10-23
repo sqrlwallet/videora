@@ -14,6 +14,8 @@ data class Project(
     val textOverlays: List<TextOverlay> = emptyList(),
     // false = Fill (crop to frame), true = Fit (letterbox). Defaults to Fill so older saved projects keep their look.
     val isFitMode: Boolean = false,
+    // Lowers music / SFX while a voiceover plays (preview and export, via duckGainAt)
+    val duckMusicUnderVoice: Boolean = false,
     val thumbnailUri: String? = null
 ) {
     val totalDurationMs: Long

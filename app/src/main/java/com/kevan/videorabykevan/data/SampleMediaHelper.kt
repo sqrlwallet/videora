@@ -59,6 +59,9 @@ object SampleMediaHelper {
             var videoTrackIndex = -1
             var muxerStarted = false
             val bufferInfo = MediaCodec.BufferInfo()
+            // Output timestamps are counted here: the surface stamps frames with the wall clock, and
+            // frames still being drained after the loop used to keep those stamps
+            var writtenFrames = 0
 
             val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
@@ -113,8 +116,9 @@ object SampleMediaHelper {
                         muxerStarted = true
                     } else if (outIndex >= 0) {
                         val encodedData = codec.getOutputBuffer(outIndex)
-                        if (encodedData != null && muxerStarted && bufferInfo.size > 0) {
-                            bufferInfo.presentationTimeUs = (i * 1_000_000L / frameRate)
+                        val isConfig = bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                        if (encodedData != null && muxerStarted && bufferInfo.size > 0 && !isConfig) {
+                            bufferInfo.presentationTimeUs = writtenFrames++ * 1_000_000L / frameRate
                             muxer.writeSampleData(videoTrackIndex, encodedData, bufferInfo)
                         }
                         codec.releaseOutputBuffer(outIndex, false)
@@ -125,16 +129,28 @@ object SampleMediaHelper {
 
             codec.signalEndOfInputStream()
 
-            // Drain remaining
-            var outIndex = codec.dequeueOutputBuffer(bufferInfo, 100_000)
-            while (outIndex >= 0) {
+            // Drain remaining until end of stream (an empty poll doesn't mean it's finished)
+            var emptyPolls = 0
+            while (emptyPolls < 300) {
+                val outIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
+                if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED && !muxerStarted) {
+                    videoTrackIndex = muxer.addTrack(codec.outputFormat)
+                    muxer.start()
+                    muxerStarted = true
+                    continue
+                }
+                if (outIndex < 0) {
+                    emptyPolls++
+                    continue
+                }
                 val encodedData = codec.getOutputBuffer(outIndex)
-                if (encodedData != null && muxerStarted && bufferInfo.size > 0) {
+                val isConfig = bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                if (encodedData != null && muxerStarted && bufferInfo.size > 0 && !isConfig) {
+                    bufferInfo.presentationTimeUs = writtenFrames++ * 1_000_000L / frameRate
                     muxer.writeSampleData(videoTrackIndex, encodedData, bufferInfo)
                 }
                 codec.releaseOutputBuffer(outIndex, false)
                 if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
-                outIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
             }
         } catch (e: Exception) {
             e.printStackTrace()

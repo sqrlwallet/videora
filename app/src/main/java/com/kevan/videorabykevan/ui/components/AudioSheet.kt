@@ -62,6 +62,8 @@ fun AudioSheet(
     onOpenVoiceover: () -> Unit,
     onAddSoundEffect: (SoundEffectItem) -> Unit,
     onToggleMuteOriginalAudio: () -> Unit,
+    duckMusicUnderVoice: Boolean,
+    onToggleDucking: () -> Unit,
     onSelectAudioTrack: (String) -> Unit,
     onRemoveAudioTrack: (String) -> Unit
 ) {
@@ -192,6 +194,46 @@ fun AudioSheet(
                 Switch(
                     checked = !allClipsMuted,
                     onCheckedChange = { onToggleMuteOriginalAudio() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = AccentCyan,
+                        checkedTrackColor = AccentCyan.copy(alpha = 0.3f)
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Auto-ducking: music dips while a voiceover or Read aloud plays
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DarkCard)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Icon(
+                        Icons.Default.Mic,
+                        contentDescription = null,
+                        tint = if (duckMusicUnderVoice) AccentCyan else Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Lower Music Under Voice", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Music and sound effects dip while a voiceover plays",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Switch(
+                    checked = duckMusicUnderVoice,
+                    onCheckedChange = { onToggleDucking() },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = AccentCyan,
                         checkedTrackColor = AccentCyan.copy(alpha = 0.3f)

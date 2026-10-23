@@ -10,9 +10,11 @@ import com.kevan.videorabykevan.model.AudioTrack
 import com.kevan.videorabykevan.model.Project
 import com.kevan.videorabykevan.model.SafeZoneType
 import com.kevan.videorabykevan.model.TextOverlay
+import com.kevan.videorabykevan.model.TextAnimation
 import com.kevan.videorabykevan.model.TextStylePreset
 import com.kevan.videorabykevan.model.VideoClip
 import com.kevan.videorabykevan.model.VideoFilter
+import com.kevan.videorabykevan.model.VoiceEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -164,10 +166,14 @@ internal object ProjectJson {
 
         project.mapArray("clips", gson.toJsonTree(VideoClip(uri = "")).asJsonObject) {
             it.validateEnum("filter", VideoFilter.entries, VideoFilter.NONE.name)
+            it.validateEnum("voiceEffect", VoiceEffect.entries, VoiceEffect.NONE.name)
         }
-        project.mapArray("audioTracks", gson.toJsonTree(AudioTrack(uri = "")).asJsonObject) {}
+        project.mapArray("audioTracks", gson.toJsonTree(AudioTrack(uri = "")).asJsonObject) {
+            it.validateEnum("voiceEffect", VoiceEffect.entries, VoiceEffect.NONE.name)
+        }
         project.mapArray("textOverlays", gson.toJsonTree(TextOverlay()).asJsonObject) {
             it.validateEnum("style", TextStylePreset.entries, TextStylePreset.VIRAL_HOOK.name)
+            it.validateEnum("animation", TextAnimation.entries, TextAnimation.NONE.name)
         }
         return project
     }
