@@ -14,7 +14,8 @@ Download the signed, installable APK from the [Latest GitHub Release](https://gi
 
 | Release | Version | Size | Highlights |
 | :--- | :--- | :--- | :--- |
-| **Latest** | **v1.5.0** | **3.7 MB** (AI edition 3.7 MB) | AI edition: auto captions, hook ideas, text story, rewrite & translate text, auto color, post caption & hashtags, project names |
+| **Latest** | **v1.5.1** | **3.7 MB** (AI edition 3.7 MB) | Cleaner home and AI settings screens: no badges, banners or feature adverts, just new video and your projects |
+| Previous | v1.5.0 | 3.7 MB (AI edition 3.7 MB) | AI edition: auto captions, hook ideas, text story, rewrite & translate text, auto color, post caption & hashtags, project names |
 | Previous | v1.4.0 | 3.7 MB (AI edition 3.8 MB) | Photos & freeze frames, text animations, Read aloud (text-to-speech), voice effects, music ducking, drag-to-trim / reorder / retime on the timeline, pinch-to-resize text |
 | Previous | v1.3.0 | 3.7 MB | Background export with notification, audio fade in/out, color correction, full-fidelity export (text, speed, volume, rotation) |
 | Previous | v1.2.3 | 3.6 MB | Layout constraint fix (bounded timeline height, 9:16 viewport restoration), legacy URI auto-caching |
